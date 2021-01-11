@@ -19,10 +19,10 @@
 
 package org.apache.druid.indexing.overlord;
 
-import com.google.common.base.Supplier;
 import org.apache.druid.indexing.overlord.autoscaling.ProvisioningSchedulerConfig;
 import org.apache.druid.indexing.overlord.autoscaling.SimpleWorkerProvisioningConfig;
 import org.apache.druid.indexing.overlord.autoscaling.SimpleWorkerProvisioningStrategy;
+import org.apache.druid.indexing.overlord.config.RemoteTaskRunnerConfig;
 import org.apache.druid.indexing.overlord.setup.DefaultWorkerBehaviorConfig;
 import org.apache.druid.indexing.overlord.setup.WorkerBehaviorConfig;
 import org.joda.time.Period;
@@ -31,55 +31,52 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-public class OverlordBlinkLeadershipTest
-{
-  private RemoteTaskRunnerTestUtils rtrUtils;
-  private final TestRemoteTaskRunnerConfig remoteTaskRunnerConfig = new TestRemoteTaskRunnerConfig(new Period("PT5M"));
-  private final DefaultWorkerBehaviorConfig defaultWorkerBehaviourConfig = DefaultWorkerBehaviorConfig.defaultConfig();
-  private final Supplier<WorkerBehaviorConfig> workerBehaviorConfigSupplier = new Supplier<WorkerBehaviorConfig>()
-  {
-    @Override
-    public DefaultWorkerBehaviorConfig get()
-    {
-      return defaultWorkerBehaviourConfig;
-    }
-  };
-  private final SimpleWorkerProvisioningStrategy resourceManagement = new SimpleWorkerProvisioningStrategy(
-      new SimpleWorkerProvisioningConfig(),
-      workerBehaviorConfigSupplier,
-      new ProvisioningSchedulerConfig()
-  );
+import com.google.common.base.Supplier;
 
-  @Before
-  public void setUp() throws Exception
-  {
-    rtrUtils = new RemoteTaskRunnerTestUtils();
-    rtrUtils.setUp();
-  }
+public class OverlordBlinkLeadershipTest {
+	private RemoteTaskRunnerTestUtils rtrUtils;
+	private final RemoteTaskRunnerConfig remoteTaskRunnerConfig = TestRemoteTaskRunnerConfig
+			.mockRemoteTaskRunnerConfig1(new Period("PT5M"));
+	private final DefaultWorkerBehaviorConfig defaultWorkerBehaviourConfig = DefaultWorkerBehaviorConfig
+			.defaultConfig();
+	private final Supplier<WorkerBehaviorConfig> workerBehaviorConfigSupplier = new Supplier<WorkerBehaviorConfig>() {
+		@Override
+		public DefaultWorkerBehaviorConfig get() {
+			return defaultWorkerBehaviourConfig;
+		}
+	};
+	private final SimpleWorkerProvisioningStrategy resourceManagement = new SimpleWorkerProvisioningStrategy(
+			new SimpleWorkerProvisioningConfig(), workerBehaviorConfigSupplier, new ProvisioningSchedulerConfig());
 
-  @After
-  public void tearDown() throws Exception
-  {
-    rtrUtils.tearDown();
-  }
+	@Before
+	public void setUp() throws Exception {
+		rtrUtils = new RemoteTaskRunnerTestUtils();
+		rtrUtils.setUp();
+	}
 
-  /**
-   * Test that we can start taskRunner, then stop it (emulating "losing leadership", see {@link
-   * TaskMaster#stop()}), then creating a new taskRunner from {@link
-   * org.apache.curator.framework.recipes.leader.LeaderSelectorListener#takeLeadership} implementation in
-   * {@link TaskMaster} and start it again.
-   */
-  @Test(timeout = 60_000L)
-  public void testOverlordBlinkLeadership()
-  {
-    try {
-      RemoteTaskRunner remoteTaskRunner1 = rtrUtils.makeRemoteTaskRunner(remoteTaskRunnerConfig, resourceManagement);
-      remoteTaskRunner1.stop();
-      RemoteTaskRunner remoteTaskRunner2 = rtrUtils.makeRemoteTaskRunner(remoteTaskRunnerConfig, resourceManagement);
-      remoteTaskRunner2.stop();
-    }
-    catch (Exception e) {
-      Assert.fail("Should have not thrown any exceptions, thrown: " + e);
-    }
-  }
+	@After
+	public void tearDown() throws Exception {
+		rtrUtils.tearDown();
+	}
+
+	/**
+	 * Test that we can start taskRunner, then stop it (emulating "losing
+	 * leadership", see {@link TaskMaster#stop()}), then creating a new taskRunner
+	 * from
+	 * {@link org.apache.curator.framework.recipes.leader.LeaderSelectorListener#takeLeadership}
+	 * implementation in {@link TaskMaster} and start it again.
+	 */
+	@Test(timeout = 60_000L)
+	public void testOverlordBlinkLeadership() {
+		try {
+			RemoteTaskRunner remoteTaskRunner1 = rtrUtils.makeRemoteTaskRunner(remoteTaskRunnerConfig,
+					resourceManagement);
+			remoteTaskRunner1.stop();
+			RemoteTaskRunner remoteTaskRunner2 = rtrUtils.makeRemoteTaskRunner(remoteTaskRunnerConfig,
+					resourceManagement);
+			remoteTaskRunner2.stop();
+		} catch (Exception e) {
+			Assert.fail("Should have not thrown any exceptions, thrown: " + e);
+		}
+	}
 }

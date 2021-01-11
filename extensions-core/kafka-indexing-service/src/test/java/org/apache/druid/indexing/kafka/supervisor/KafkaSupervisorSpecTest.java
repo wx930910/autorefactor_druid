@@ -19,9 +19,8 @@
 
 package org.apache.druid.indexing.kafka.supervisor;
 
-import com.fasterxml.jackson.databind.InjectableValues;
-import com.fasterxml.jackson.databind.Module;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+
 import org.apache.druid.indexing.common.stats.RowIngestionMetersFactory;
 import org.apache.druid.indexing.kafka.KafkaIndexTaskClientFactory;
 import org.apache.druid.indexing.kafka.KafkaIndexTaskModule;
@@ -38,460 +37,256 @@ import org.apache.druid.server.metrics.NoopServiceEmitter;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.IOException;
+import com.fasterxml.jackson.databind.InjectableValues;
+import com.fasterxml.jackson.databind.Module;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-public class KafkaSupervisorSpecTest
-{
-  private final ObjectMapper mapper;
+public class KafkaSupervisorSpecTest {
+	private final ObjectMapper mapper;
 
-  public KafkaSupervisorSpecTest()
-  {
-    mapper = new DefaultObjectMapper();
-    mapper.setInjectableValues(
-        new InjectableValues.Std()
-            .addValue(TaskStorage.class, null)
-            .addValue(TaskMaster.class, null)
-            .addValue(IndexerMetadataStorageCoordinator.class, null)
-            .addValue(KafkaIndexTaskClientFactory.class, null)
-            .addValue(ObjectMapper.class, mapper)
-            .addValue(ServiceEmitter.class, new NoopServiceEmitter())
-            .addValue(DruidMonitorSchedulerConfig.class, null)
-            .addValue(RowIngestionMetersFactory.class, null)
-            .addValue(SupervisorStateManagerConfig.class, null)
-            .addValue(ExprMacroTable.class.getName(), LookupEnabledTestExprMacroTable.INSTANCE)
-    );
-    mapper.registerModules((Iterable<Module>) new KafkaIndexTaskModule().getJacksonModules());
-  }
+	public KafkaSupervisorSpecTest() {
+		mapper = new DefaultObjectMapper();
+		mapper.setInjectableValues(new InjectableValues.Std().addValue(TaskStorage.class, null)
+				.addValue(TaskMaster.class, null).addValue(IndexerMetadataStorageCoordinator.class, null)
+				.addValue(KafkaIndexTaskClientFactory.class, null).addValue(ObjectMapper.class, mapper)
+				.addValue(ServiceEmitter.class, NoopServiceEmitter.mockServiceEmitter1())
+				.addValue(DruidMonitorSchedulerConfig.class, null).addValue(RowIngestionMetersFactory.class, null)
+				.addValue(SupervisorStateManagerConfig.class, null)
+				.addValue(ExprMacroTable.class.getName(), LookupEnabledTestExprMacroTable.INSTANCE));
+		mapper.registerModules((Iterable<Module>) new KafkaIndexTaskModule().getJacksonModules());
+	}
 
-  @Test
-  public void testSerde() throws IOException
-  {
-    String json = "{\n"
-                  + "  \"type\": \"kafka\",\n"
-                  + "  \"dataSchema\": {\n"
-                  + "    \"dataSource\": \"metrics-kafka\",\n"
-                  + "    \"parser\": {\n"
-                  + "      \"type\": \"string\",\n"
-                  + "      \"parseSpec\": {\n"
-                  + "        \"format\": \"json\",\n"
-                  + "        \"timestampSpec\": {\n"
-                  + "          \"column\": \"timestamp\",\n"
-                  + "          \"format\": \"auto\"\n"
-                  + "        },\n"
-                  + "        \"dimensionsSpec\": {\n"
-                  + "          \"dimensions\": [],\n"
-                  + "          \"dimensionExclusions\": [\n"
-                  + "            \"timestamp\",\n"
-                  + "            \"value\"\n"
-                  + "          ]\n"
-                  + "        }\n"
-                  + "      }\n"
-                  + "    },\n"
-                  + "    \"metricsSpec\": [\n"
-                  + "      {\n"
-                  + "        \"name\": \"count\",\n"
-                  + "        \"type\": \"count\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_sum\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleSum\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_min\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleMin\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_max\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleMax\"\n"
-                  + "      }\n"
-                  + "    ],\n"
-                  + "    \"granularitySpec\": {\n"
-                  + "      \"type\": \"uniform\",\n"
-                  + "      \"segmentGranularity\": \"HOUR\",\n"
-                  + "      \"queryGranularity\": \"NONE\"\n"
-                  + "    }\n"
-                  + "  },\n"
-                  + "  \"ioConfig\": {\n"
-                  + "    \"topic\": \"metrics\",\n"
-                  + "    \"consumerProperties\": {\n"
-                  + "      \"bootstrap.servers\": \"localhost:9092\"\n"
-                  + "    },\n"
-                  + "    \"taskCount\": 1\n"
-                  + "  }\n"
-                  + "}";
-    KafkaSupervisorSpec spec = mapper.readValue(json, KafkaSupervisorSpec.class);
+	@Test
+	public void testSerde() throws IOException {
+		String json = "{\n" + "  \"type\": \"kafka\",\n" + "  \"dataSchema\": {\n"
+				+ "    \"dataSource\": \"metrics-kafka\",\n" + "    \"parser\": {\n" + "      \"type\": \"string\",\n"
+				+ "      \"parseSpec\": {\n" + "        \"format\": \"json\",\n" + "        \"timestampSpec\": {\n"
+				+ "          \"column\": \"timestamp\",\n" + "          \"format\": \"auto\"\n" + "        },\n"
+				+ "        \"dimensionsSpec\": {\n" + "          \"dimensions\": [],\n"
+				+ "          \"dimensionExclusions\": [\n" + "            \"timestamp\",\n" + "            \"value\"\n"
+				+ "          ]\n" + "        }\n" + "      }\n" + "    },\n" + "    \"metricsSpec\": [\n" + "      {\n"
+				+ "        \"name\": \"count\",\n" + "        \"type\": \"count\"\n" + "      },\n" + "      {\n"
+				+ "        \"name\": \"value_sum\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleSum\"\n" + "      },\n" + "      {\n"
+				+ "        \"name\": \"value_min\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleMin\"\n" + "      },\n" + "      {\n"
+				+ "        \"name\": \"value_max\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleMax\"\n" + "      }\n" + "    ],\n" + "    \"granularitySpec\": {\n"
+				+ "      \"type\": \"uniform\",\n" + "      \"segmentGranularity\": \"HOUR\",\n"
+				+ "      \"queryGranularity\": \"NONE\"\n" + "    }\n" + "  },\n" + "  \"ioConfig\": {\n"
+				+ "    \"topic\": \"metrics\",\n" + "    \"consumerProperties\": {\n"
+				+ "      \"bootstrap.servers\": \"localhost:9092\"\n" + "    },\n" + "    \"taskCount\": 1\n" + "  }\n"
+				+ "}";
+		KafkaSupervisorSpec spec = mapper.readValue(json, KafkaSupervisorSpec.class);
 
-    Assert.assertNotNull(spec);
-    Assert.assertNotNull(spec.getDataSchema());
-    Assert.assertEquals(4, spec.getDataSchema().getAggregators().length);
-    Assert.assertNotNull(spec.getIoConfig());
-    Assert.assertEquals("metrics", spec.getIoConfig().getTopic());
-    Assert.assertNotNull(spec.getTuningConfig());
-    Assert.assertNull(spec.getContext());
-    Assert.assertFalse(spec.isSuspended());
-    String serialized = mapper.writeValueAsString(spec);
+		Assert.assertNotNull(spec);
+		Assert.assertNotNull(spec.getDataSchema());
+		Assert.assertEquals(4, spec.getDataSchema().getAggregators().length);
+		Assert.assertNotNull(spec.getIoConfig());
+		Assert.assertEquals("metrics", spec.getIoConfig().getTopic());
+		Assert.assertNotNull(spec.getTuningConfig());
+		Assert.assertNull(spec.getContext());
+		Assert.assertFalse(spec.isSuspended());
+		String serialized = mapper.writeValueAsString(spec);
 
-    // expect default values populated in reserialized string
-    Assert.assertTrue(serialized.contains("\"tuningConfig\":{"));
-    Assert.assertTrue(serialized.contains("\"indexSpec\":{"));
-    Assert.assertTrue(serialized.contains("\"suspended\":false"));
-    Assert.assertTrue(serialized.contains("\"parser\":{"));
+		// expect default values populated in reserialized string
+		Assert.assertTrue(serialized.contains("\"tuningConfig\":{"));
+		Assert.assertTrue(serialized.contains("\"indexSpec\":{"));
+		Assert.assertTrue(serialized.contains("\"suspended\":false"));
+		Assert.assertTrue(serialized.contains("\"parser\":{"));
 
-    KafkaSupervisorSpec spec2 = mapper.readValue(serialized, KafkaSupervisorSpec.class);
+		KafkaSupervisorSpec spec2 = mapper.readValue(serialized, KafkaSupervisorSpec.class);
 
-    String stable = mapper.writeValueAsString(spec2);
+		String stable = mapper.writeValueAsString(spec2);
 
-    Assert.assertEquals(serialized, stable);
-  }
+		Assert.assertEquals(serialized, stable);
+	}
 
-  @Test
-  public void testSerdeWithInputFormat() throws IOException
-  {
-    String json = "{\n"
-                  + "  \"type\": \"kafka\",\n"
-                  + "  \"dataSchema\": {\n"
-                  + "    \"dataSource\": \"metrics-kafka\",\n"
-                  + "    \"timestampSpec\": {\n"
-                  + "      \"column\": \"timestamp\",\n"
-                  + "      \"format\": \"auto\"\n"
-                  + "     },\n"
-                  + "    \"dimensionsSpec\": {\n"
-                  + "      \"dimensions\": [],\n"
-                  + "      \"dimensionExclusions\": [\n"
-                  + "        \"timestamp\",\n"
-                  + "        \"value\"\n"
-                  + "       ]\n"
-                  + "    },\n"
-                  + "    \"metricsSpec\": [\n"
-                  + "      {\n"
-                  + "        \"name\": \"count\",\n"
-                  + "        \"type\": \"count\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_sum\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleSum\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_min\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleMin\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_max\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleMax\"\n"
-                  + "      }\n"
-                  + "    ],\n"
-                  + "    \"granularitySpec\": {\n"
-                  + "      \"type\": \"uniform\",\n"
-                  + "      \"segmentGranularity\": \"HOUR\",\n"
-                  + "      \"queryGranularity\": \"NONE\"\n"
-                  + "    }\n"
-                  + "  },\n"
-                  + "  \"ioConfig\": {\n"
-                  + "    \"topic\": \"metrics\",\n"
-                  + "    \"inputFormat\": {\n"
-                  + "      \"type\": \"json\",\n"
-                  + "      \"flattenSpec\": {\n"
-                  + "        \"useFieldDiscovery\": true,\n"
-                  + "        \"fields\": []\n"
-                  + "      },\n"
-                  + "      \"featureSpec\": {}\n"
-                  + "    },"
-                  + "    \"consumerProperties\": {\n"
-                  + "      \"bootstrap.servers\": \"localhost:9092\"\n"
-                  + "    },\n"
-                  + "    \"taskCount\": 1\n"
-                  + "  }\n"
-                  + "}";
-    KafkaSupervisorSpec spec = mapper.readValue(json, KafkaSupervisorSpec.class);
+	@Test
+	public void testSerdeWithInputFormat() throws IOException {
+		String json = "{\n" + "  \"type\": \"kafka\",\n" + "  \"dataSchema\": {\n"
+				+ "    \"dataSource\": \"metrics-kafka\",\n" + "    \"timestampSpec\": {\n"
+				+ "      \"column\": \"timestamp\",\n" + "      \"format\": \"auto\"\n" + "     },\n"
+				+ "    \"dimensionsSpec\": {\n" + "      \"dimensions\": [],\n" + "      \"dimensionExclusions\": [\n"
+				+ "        \"timestamp\",\n" + "        \"value\"\n" + "       ]\n" + "    },\n"
+				+ "    \"metricsSpec\": [\n" + "      {\n" + "        \"name\": \"count\",\n"
+				+ "        \"type\": \"count\"\n" + "      },\n" + "      {\n" + "        \"name\": \"value_sum\",\n"
+				+ "        \"fieldName\": \"value\",\n" + "        \"type\": \"doubleSum\"\n" + "      },\n"
+				+ "      {\n" + "        \"name\": \"value_min\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleMin\"\n" + "      },\n" + "      {\n"
+				+ "        \"name\": \"value_max\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleMax\"\n" + "      }\n" + "    ],\n" + "    \"granularitySpec\": {\n"
+				+ "      \"type\": \"uniform\",\n" + "      \"segmentGranularity\": \"HOUR\",\n"
+				+ "      \"queryGranularity\": \"NONE\"\n" + "    }\n" + "  },\n" + "  \"ioConfig\": {\n"
+				+ "    \"topic\": \"metrics\",\n" + "    \"inputFormat\": {\n" + "      \"type\": \"json\",\n"
+				+ "      \"flattenSpec\": {\n" + "        \"useFieldDiscovery\": true,\n" + "        \"fields\": []\n"
+				+ "      },\n" + "      \"featureSpec\": {}\n" + "    }," + "    \"consumerProperties\": {\n"
+				+ "      \"bootstrap.servers\": \"localhost:9092\"\n" + "    },\n" + "    \"taskCount\": 1\n" + "  }\n"
+				+ "}";
+		KafkaSupervisorSpec spec = mapper.readValue(json, KafkaSupervisorSpec.class);
 
-    Assert.assertNotNull(spec);
-    Assert.assertNotNull(spec.getDataSchema());
-    Assert.assertEquals(4, spec.getDataSchema().getAggregators().length);
-    Assert.assertNotNull(spec.getIoConfig());
-    Assert.assertEquals("metrics", spec.getIoConfig().getTopic());
-    Assert.assertNotNull(spec.getTuningConfig());
-    Assert.assertNull(spec.getContext());
-    Assert.assertFalse(spec.isSuspended());
-    String serialized = mapper.writeValueAsString(spec);
+		Assert.assertNotNull(spec);
+		Assert.assertNotNull(spec.getDataSchema());
+		Assert.assertEquals(4, spec.getDataSchema().getAggregators().length);
+		Assert.assertNotNull(spec.getIoConfig());
+		Assert.assertEquals("metrics", spec.getIoConfig().getTopic());
+		Assert.assertNotNull(spec.getTuningConfig());
+		Assert.assertNull(spec.getContext());
+		Assert.assertFalse(spec.isSuspended());
+		String serialized = mapper.writeValueAsString(spec);
 
-    // expect default values populated in reserialized string
-    Assert.assertTrue(serialized.contains("\"tuningConfig\":{"));
-    Assert.assertTrue(serialized.contains("\"indexSpec\":{"));
-    Assert.assertTrue(serialized.contains("\"suspended\":false"));
-    Assert.assertTrue(serialized.contains("\"inputFormat\":{"));
+		// expect default values populated in reserialized string
+		Assert.assertTrue(serialized.contains("\"tuningConfig\":{"));
+		Assert.assertTrue(serialized.contains("\"indexSpec\":{"));
+		Assert.assertTrue(serialized.contains("\"suspended\":false"));
+		Assert.assertTrue(serialized.contains("\"inputFormat\":{"));
 
-    KafkaSupervisorSpec spec2 = mapper.readValue(serialized, KafkaSupervisorSpec.class);
+		KafkaSupervisorSpec spec2 = mapper.readValue(serialized, KafkaSupervisorSpec.class);
 
-    String stable = mapper.writeValueAsString(spec2);
+		String stable = mapper.writeValueAsString(spec2);
 
-    Assert.assertEquals(serialized, stable);
-  }
+		Assert.assertEquals(serialized, stable);
+	}
 
-  @Test
-  public void testSerdeWithSpec() throws IOException
-  {
-    String json = "{\n"
-                  + "  \"type\": \"kafka\",\n"
-                  + "  \"spec\": {\n"
-                  + "  \"dataSchema\": {\n"
-                  + "    \"dataSource\": \"metrics-kafka\",\n"
-                  + "    \"parser\": {\n"
-                  + "      \"type\": \"string\",\n"
-                  + "      \"parseSpec\": {\n"
-                  + "        \"format\": \"json\",\n"
-                  + "        \"timestampSpec\": {\n"
-                  + "          \"column\": \"timestamp\",\n"
-                  + "          \"format\": \"auto\"\n"
-                  + "        },\n"
-                  + "        \"dimensionsSpec\": {\n"
-                  + "          \"dimensions\": [],\n"
-                  + "          \"dimensionExclusions\": [\n"
-                  + "            \"timestamp\",\n"
-                  + "            \"value\"\n"
-                  + "          ]\n"
-                  + "        }\n"
-                  + "      }\n"
-                  + "    },\n"
-                  + "    \"metricsSpec\": [\n"
-                  + "      {\n"
-                  + "        \"name\": \"count\",\n"
-                  + "        \"type\": \"count\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_sum\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleSum\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_min\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleMin\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_max\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleMax\"\n"
-                  + "      }\n"
-                  + "    ],\n"
-                  + "    \"granularitySpec\": {\n"
-                  + "      \"type\": \"uniform\",\n"
-                  + "      \"segmentGranularity\": \"HOUR\",\n"
-                  + "      \"queryGranularity\": \"NONE\"\n"
-                  + "    }\n"
-                  + "  },\n"
-                  + "  \"ioConfig\": {\n"
-                  + "    \"topic\": \"metrics\",\n"
-                  + "    \"consumerProperties\": {\n"
-                  + "      \"bootstrap.servers\": \"localhost:9092\"\n"
-                  + "    },\n"
-                  + "    \"taskCount\": 1\n"
-                  + "  }\n"
-                  + "  }\n"
-                  + "}";
-    KafkaSupervisorSpec spec = mapper.readValue(json, KafkaSupervisorSpec.class);
+	@Test
+	public void testSerdeWithSpec() throws IOException {
+		String json = "{\n" + "  \"type\": \"kafka\",\n" + "  \"spec\": {\n" + "  \"dataSchema\": {\n"
+				+ "    \"dataSource\": \"metrics-kafka\",\n" + "    \"parser\": {\n" + "      \"type\": \"string\",\n"
+				+ "      \"parseSpec\": {\n" + "        \"format\": \"json\",\n" + "        \"timestampSpec\": {\n"
+				+ "          \"column\": \"timestamp\",\n" + "          \"format\": \"auto\"\n" + "        },\n"
+				+ "        \"dimensionsSpec\": {\n" + "          \"dimensions\": [],\n"
+				+ "          \"dimensionExclusions\": [\n" + "            \"timestamp\",\n" + "            \"value\"\n"
+				+ "          ]\n" + "        }\n" + "      }\n" + "    },\n" + "    \"metricsSpec\": [\n" + "      {\n"
+				+ "        \"name\": \"count\",\n" + "        \"type\": \"count\"\n" + "      },\n" + "      {\n"
+				+ "        \"name\": \"value_sum\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleSum\"\n" + "      },\n" + "      {\n"
+				+ "        \"name\": \"value_min\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleMin\"\n" + "      },\n" + "      {\n"
+				+ "        \"name\": \"value_max\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleMax\"\n" + "      }\n" + "    ],\n" + "    \"granularitySpec\": {\n"
+				+ "      \"type\": \"uniform\",\n" + "      \"segmentGranularity\": \"HOUR\",\n"
+				+ "      \"queryGranularity\": \"NONE\"\n" + "    }\n" + "  },\n" + "  \"ioConfig\": {\n"
+				+ "    \"topic\": \"metrics\",\n" + "    \"consumerProperties\": {\n"
+				+ "      \"bootstrap.servers\": \"localhost:9092\"\n" + "    },\n" + "    \"taskCount\": 1\n" + "  }\n"
+				+ "  }\n" + "}";
+		KafkaSupervisorSpec spec = mapper.readValue(json, KafkaSupervisorSpec.class);
 
-    Assert.assertNotNull(spec);
-    Assert.assertNotNull(spec.getDataSchema());
-    Assert.assertEquals(4, spec.getDataSchema().getAggregators().length);
-    Assert.assertNotNull(spec.getIoConfig());
-    Assert.assertEquals("metrics", spec.getIoConfig().getTopic());
-    Assert.assertNotNull(spec.getTuningConfig());
-    Assert.assertNull(spec.getContext());
-    Assert.assertFalse(spec.isSuspended());
-    String serialized = mapper.writeValueAsString(spec);
+		Assert.assertNotNull(spec);
+		Assert.assertNotNull(spec.getDataSchema());
+		Assert.assertEquals(4, spec.getDataSchema().getAggregators().length);
+		Assert.assertNotNull(spec.getIoConfig());
+		Assert.assertEquals("metrics", spec.getIoConfig().getTopic());
+		Assert.assertNotNull(spec.getTuningConfig());
+		Assert.assertNull(spec.getContext());
+		Assert.assertFalse(spec.isSuspended());
+		String serialized = mapper.writeValueAsString(spec);
 
-    // expect default values populated in reserialized string
-    Assert.assertTrue(serialized.contains("\"tuningConfig\":{"));
-    Assert.assertTrue(serialized.contains("\"indexSpec\":{"));
-    Assert.assertTrue(serialized.contains("\"suspended\":false"));
-    Assert.assertTrue(serialized.contains("\"parser\":{"));
+		// expect default values populated in reserialized string
+		Assert.assertTrue(serialized.contains("\"tuningConfig\":{"));
+		Assert.assertTrue(serialized.contains("\"indexSpec\":{"));
+		Assert.assertTrue(serialized.contains("\"suspended\":false"));
+		Assert.assertTrue(serialized.contains("\"parser\":{"));
 
-    KafkaSupervisorSpec spec2 = mapper.readValue(serialized, KafkaSupervisorSpec.class);
+		KafkaSupervisorSpec spec2 = mapper.readValue(serialized, KafkaSupervisorSpec.class);
 
-    String stable = mapper.writeValueAsString(spec2);
+		String stable = mapper.writeValueAsString(spec2);
 
-    Assert.assertEquals(serialized, stable);
-  }
+		Assert.assertEquals(serialized, stable);
+	}
 
-  @Test
-  public void testSerdeWithSpecAndInputFormat() throws IOException
-  {
-    String json = "{\n"
-                  + "  \"type\": \"kafka\",\n"
-                  + "  \"spec\": {\n"
-                  + "  \"dataSchema\": {\n"
-                  + "    \"dataSource\": \"metrics-kafka\",\n"
-                  + "    \"timestampSpec\": {\n"
-                  + "      \"column\": \"timestamp\",\n"
-                  + "      \"format\": \"auto\"\n"
-                  + "    },\n"
-                  + "    \"dimensionsSpec\": {\n"
-                  + "      \"dimensions\": [],\n"
-                  + "      \"dimensionExclusions\": [\n"
-                  + "        \"timestamp\",\n"
-                  + "        \"value\"\n"
-                  + "      ]\n"
-                  + "    },\n"
-                  + "    \"metricsSpec\": [\n"
-                  + "      {\n"
-                  + "        \"name\": \"count\",\n"
-                  + "        \"type\": \"count\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_sum\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleSum\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_min\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleMin\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_max\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleMax\"\n"
-                  + "      }\n"
-                  + "    ],\n"
-                  + "    \"granularitySpec\": {\n"
-                  + "      \"type\": \"uniform\",\n"
-                  + "      \"segmentGranularity\": \"HOUR\",\n"
-                  + "      \"queryGranularity\": \"NONE\"\n"
-                  + "    }\n"
-                  + "  },\n"
-                  + "  \"ioConfig\": {\n"
-                  + "    \"topic\": \"metrics\",\n"
-                  + "    \"inputFormat\": {\n"
-                  + "      \"type\": \"json\",\n"
-                  + "      \"flattenSpec\": {\n"
-                  + "        \"useFieldDiscovery\": true,\n"
-                  + "        \"fields\": []\n"
-                  + "      },\n"
-                  + "      \"featureSpec\": {}\n"
-                  + "    },"
-                  + "    \"consumerProperties\": {\n"
-                  + "      \"bootstrap.servers\": \"localhost:9092\"\n"
-                  + "    },\n"
-                  + "    \"taskCount\": 1\n"
-                  + "  }\n"
-                  + "  }\n"
-                  + "}";
-    KafkaSupervisorSpec spec = mapper.readValue(json, KafkaSupervisorSpec.class);
+	@Test
+	public void testSerdeWithSpecAndInputFormat() throws IOException {
+		String json = "{\n" + "  \"type\": \"kafka\",\n" + "  \"spec\": {\n" + "  \"dataSchema\": {\n"
+				+ "    \"dataSource\": \"metrics-kafka\",\n" + "    \"timestampSpec\": {\n"
+				+ "      \"column\": \"timestamp\",\n" + "      \"format\": \"auto\"\n" + "    },\n"
+				+ "    \"dimensionsSpec\": {\n" + "      \"dimensions\": [],\n" + "      \"dimensionExclusions\": [\n"
+				+ "        \"timestamp\",\n" + "        \"value\"\n" + "      ]\n" + "    },\n"
+				+ "    \"metricsSpec\": [\n" + "      {\n" + "        \"name\": \"count\",\n"
+				+ "        \"type\": \"count\"\n" + "      },\n" + "      {\n" + "        \"name\": \"value_sum\",\n"
+				+ "        \"fieldName\": \"value\",\n" + "        \"type\": \"doubleSum\"\n" + "      },\n"
+				+ "      {\n" + "        \"name\": \"value_min\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleMin\"\n" + "      },\n" + "      {\n"
+				+ "        \"name\": \"value_max\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleMax\"\n" + "      }\n" + "    ],\n" + "    \"granularitySpec\": {\n"
+				+ "      \"type\": \"uniform\",\n" + "      \"segmentGranularity\": \"HOUR\",\n"
+				+ "      \"queryGranularity\": \"NONE\"\n" + "    }\n" + "  },\n" + "  \"ioConfig\": {\n"
+				+ "    \"topic\": \"metrics\",\n" + "    \"inputFormat\": {\n" + "      \"type\": \"json\",\n"
+				+ "      \"flattenSpec\": {\n" + "        \"useFieldDiscovery\": true,\n" + "        \"fields\": []\n"
+				+ "      },\n" + "      \"featureSpec\": {}\n" + "    }," + "    \"consumerProperties\": {\n"
+				+ "      \"bootstrap.servers\": \"localhost:9092\"\n" + "    },\n" + "    \"taskCount\": 1\n" + "  }\n"
+				+ "  }\n" + "}";
+		KafkaSupervisorSpec spec = mapper.readValue(json, KafkaSupervisorSpec.class);
 
-    Assert.assertNotNull(spec);
-    Assert.assertNotNull(spec.getDataSchema());
-    Assert.assertEquals(4, spec.getDataSchema().getAggregators().length);
-    Assert.assertNotNull(spec.getIoConfig());
-    Assert.assertEquals("metrics", spec.getIoConfig().getTopic());
-    Assert.assertNotNull(spec.getTuningConfig());
-    Assert.assertNull(spec.getContext());
-    Assert.assertFalse(spec.isSuspended());
-    String serialized = mapper.writeValueAsString(spec);
+		Assert.assertNotNull(spec);
+		Assert.assertNotNull(spec.getDataSchema());
+		Assert.assertEquals(4, spec.getDataSchema().getAggregators().length);
+		Assert.assertNotNull(spec.getIoConfig());
+		Assert.assertEquals("metrics", spec.getIoConfig().getTopic());
+		Assert.assertNotNull(spec.getTuningConfig());
+		Assert.assertNull(spec.getContext());
+		Assert.assertFalse(spec.isSuspended());
+		String serialized = mapper.writeValueAsString(spec);
 
-    // expect default values populated in reserialized string
-    Assert.assertTrue(serialized.contains("\"tuningConfig\":{"));
-    Assert.assertTrue(serialized.contains("\"indexSpec\":{"));
-    Assert.assertTrue(serialized.contains("\"suspended\":false"));
-    Assert.assertTrue(serialized.contains("\"inputFormat\":{"));
+		// expect default values populated in reserialized string
+		Assert.assertTrue(serialized.contains("\"tuningConfig\":{"));
+		Assert.assertTrue(serialized.contains("\"indexSpec\":{"));
+		Assert.assertTrue(serialized.contains("\"suspended\":false"));
+		Assert.assertTrue(serialized.contains("\"inputFormat\":{"));
 
-    KafkaSupervisorSpec spec2 = mapper.readValue(serialized, KafkaSupervisorSpec.class);
+		KafkaSupervisorSpec spec2 = mapper.readValue(serialized, KafkaSupervisorSpec.class);
 
-    String stable = mapper.writeValueAsString(spec2);
+		String stable = mapper.writeValueAsString(spec2);
 
-    Assert.assertEquals(serialized, stable);
-  }
+		Assert.assertEquals(serialized, stable);
+	}
 
-  @Test
-  public void testSuspendResume() throws IOException
-  {
-    String json = "{\n"
-                  + "  \"type\": \"kafka\",\n"
-                  + "  \"dataSchema\": {\n"
-                  + "    \"dataSource\": \"metrics-kafka\",\n"
-                  + "    \"parser\": {\n"
-                  + "      \"type\": \"string\",\n"
-                  + "      \"parseSpec\": {\n"
-                  + "        \"format\": \"json\",\n"
-                  + "        \"timestampSpec\": {\n"
-                  + "          \"column\": \"timestamp\",\n"
-                  + "          \"format\": \"auto\"\n"
-                  + "        },\n"
-                  + "        \"dimensionsSpec\": {\n"
-                  + "          \"dimensions\": [],\n"
-                  + "          \"dimensionExclusions\": [\n"
-                  + "            \"timestamp\",\n"
-                  + "            \"value\"\n"
-                  + "          ]\n"
-                  + "        }\n"
-                  + "      }\n"
-                  + "    },\n"
-                  + "    \"metricsSpec\": [\n"
-                  + "      {\n"
-                  + "        \"name\": \"count\",\n"
-                  + "        \"type\": \"count\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_sum\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleSum\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_min\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleMin\"\n"
-                  + "      },\n"
-                  + "      {\n"
-                  + "        \"name\": \"value_max\",\n"
-                  + "        \"fieldName\": \"value\",\n"
-                  + "        \"type\": \"doubleMax\"\n"
-                  + "      }\n"
-                  + "    ],\n"
-                  + "    \"granularitySpec\": {\n"
-                  + "      \"type\": \"uniform\",\n"
-                  + "      \"segmentGranularity\": \"HOUR\",\n"
-                  + "      \"queryGranularity\": \"NONE\"\n"
-                  + "    }\n"
-                  + "  },\n"
-                  + "  \"ioConfig\": {\n"
-                  + "    \"topic\": \"metrics\",\n"
-                  + "    \"consumerProperties\": {\n"
-                  + "      \"bootstrap.servers\": \"localhost:9092\"\n"
-                  + "    },\n"
-                  + "    \"taskCount\": 1\n"
-                  + "  }\n"
-                  + "}";
-    KafkaSupervisorSpec spec = mapper.readValue(json, KafkaSupervisorSpec.class);
+	@Test
+	public void testSuspendResume() throws IOException {
+		String json = "{\n" + "  \"type\": \"kafka\",\n" + "  \"dataSchema\": {\n"
+				+ "    \"dataSource\": \"metrics-kafka\",\n" + "    \"parser\": {\n" + "      \"type\": \"string\",\n"
+				+ "      \"parseSpec\": {\n" + "        \"format\": \"json\",\n" + "        \"timestampSpec\": {\n"
+				+ "          \"column\": \"timestamp\",\n" + "          \"format\": \"auto\"\n" + "        },\n"
+				+ "        \"dimensionsSpec\": {\n" + "          \"dimensions\": [],\n"
+				+ "          \"dimensionExclusions\": [\n" + "            \"timestamp\",\n" + "            \"value\"\n"
+				+ "          ]\n" + "        }\n" + "      }\n" + "    },\n" + "    \"metricsSpec\": [\n" + "      {\n"
+				+ "        \"name\": \"count\",\n" + "        \"type\": \"count\"\n" + "      },\n" + "      {\n"
+				+ "        \"name\": \"value_sum\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleSum\"\n" + "      },\n" + "      {\n"
+				+ "        \"name\": \"value_min\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleMin\"\n" + "      },\n" + "      {\n"
+				+ "        \"name\": \"value_max\",\n" + "        \"fieldName\": \"value\",\n"
+				+ "        \"type\": \"doubleMax\"\n" + "      }\n" + "    ],\n" + "    \"granularitySpec\": {\n"
+				+ "      \"type\": \"uniform\",\n" + "      \"segmentGranularity\": \"HOUR\",\n"
+				+ "      \"queryGranularity\": \"NONE\"\n" + "    }\n" + "  },\n" + "  \"ioConfig\": {\n"
+				+ "    \"topic\": \"metrics\",\n" + "    \"consumerProperties\": {\n"
+				+ "      \"bootstrap.servers\": \"localhost:9092\"\n" + "    },\n" + "    \"taskCount\": 1\n" + "  }\n"
+				+ "}";
+		KafkaSupervisorSpec spec = mapper.readValue(json, KafkaSupervisorSpec.class);
 
-    Assert.assertNotNull(spec);
-    Assert.assertNotNull(spec.getDataSchema());
-    Assert.assertEquals(4, spec.getDataSchema().getAggregators().length);
-    Assert.assertNotNull(spec.getIoConfig());
-    Assert.assertEquals("metrics", spec.getIoConfig().getTopic());
-    Assert.assertNotNull(spec.getTuningConfig());
-    Assert.assertNull(spec.getContext());
-    Assert.assertFalse(spec.isSuspended());
+		Assert.assertNotNull(spec);
+		Assert.assertNotNull(spec.getDataSchema());
+		Assert.assertEquals(4, spec.getDataSchema().getAggregators().length);
+		Assert.assertNotNull(spec.getIoConfig());
+		Assert.assertEquals("metrics", spec.getIoConfig().getTopic());
+		Assert.assertNotNull(spec.getTuningConfig());
+		Assert.assertNull(spec.getContext());
+		Assert.assertFalse(spec.isSuspended());
 
-    String suspendedSerialized = mapper.writeValueAsString(spec.createSuspendedSpec());
+		String suspendedSerialized = mapper.writeValueAsString(spec.createSuspendedSpec());
 
-    // expect default values populated in reserialized string
-    Assert.assertTrue(suspendedSerialized.contains("\"tuningConfig\":{"));
-    Assert.assertTrue(suspendedSerialized.contains("\"indexSpec\":{"));
-    Assert.assertTrue(suspendedSerialized.contains("\"suspended\":true"));
+		// expect default values populated in reserialized string
+		Assert.assertTrue(suspendedSerialized.contains("\"tuningConfig\":{"));
+		Assert.assertTrue(suspendedSerialized.contains("\"indexSpec\":{"));
+		Assert.assertTrue(suspendedSerialized.contains("\"suspended\":true"));
 
-    KafkaSupervisorSpec suspendedSpec = mapper.readValue(suspendedSerialized, KafkaSupervisorSpec.class);
+		KafkaSupervisorSpec suspendedSpec = mapper.readValue(suspendedSerialized, KafkaSupervisorSpec.class);
 
-    Assert.assertTrue(suspendedSpec.isSuspended());
+		Assert.assertTrue(suspendedSpec.isSuspended());
 
-    String runningSerialized = mapper.writeValueAsString(spec.createRunningSpec());
+		String runningSerialized = mapper.writeValueAsString(spec.createRunningSpec());
 
-    KafkaSupervisorSpec runningSpec = mapper.readValue(runningSerialized, KafkaSupervisorSpec.class);
+		KafkaSupervisorSpec runningSpec = mapper.readValue(runningSerialized, KafkaSupervisorSpec.class);
 
-    Assert.assertFalse(runningSpec.isSuspended());
-  }
+		Assert.assertFalse(runningSpec.isSuspended());
+	}
 }

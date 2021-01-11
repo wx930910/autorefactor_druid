@@ -19,12 +19,18 @@
 
 package org.apache.druid.server.coordinator;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Predicates;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.recipes.cache.PathChildrenCache;
 import org.apache.curator.framework.recipes.cache.PathChildrenCacheEvent;
@@ -40,6 +46,7 @@ import org.apache.druid.curator.CuratorTestBase;
 import org.apache.druid.curator.CuratorUtils;
 import org.apache.druid.curator.discovery.NoopServiceAnnouncer;
 import org.apache.druid.discovery.DruidLeaderSelector;
+import org.apache.druid.discovery.DruidLeaderSelector.Listener;
 import org.apache.druid.jackson.DefaultObjectMapper;
 import org.apache.druid.java.util.common.Intervals;
 import org.apache.druid.java.util.common.Pair;
@@ -66,504 +73,362 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestRule;
+import org.mockito.Mockito;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Predicates;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Lists;
 
 /**
- * This tests zookeeper specific coordinator/load queue/historical interactions, such as moving segments by the balancer
+ * This tests zookeeper specific coordinator/load queue/historical interactions,
+ * such as moving segments by the balancer
  */
-public class CuratorDruidCoordinatorTest extends CuratorTestBase
-{
-  private DruidCoordinator coordinator;
-  private SegmentsMetadataManager segmentsMetadataManager;
-  private DataSourcesSnapshot dataSourcesSnapshot;
-  private DruidCoordinatorRuntimeParams coordinatorRuntimeParams;
+public class CuratorDruidCoordinatorTest extends CuratorTestBase {
+	static public DruidLeaderSelector mockDruidLeaderSelector1() {
+		Listener[] mockFieldVariableListener = new Listener[1];
+		String[] mockFieldVariableLeader = new String[1];
+		DruidLeaderSelector mockInstance = Mockito.spy(DruidLeaderSelector.class);
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				Listener listener = stubInvo.getArgument(0);
+				mockFieldVariableListener[0] = listener;
+				mockFieldVariableLeader[0] = "what:1234";
+				listener.becomeLeader();
+				return null;
+			}).when(mockInstance).registerListener(Mockito.any(Listener.class));
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableLeader[0] != null;
+			}).when(mockInstance).isLeader();
+			Mockito.doAnswer((stubInvo) -> {
+				return 0;
+			}).when(mockInstance).localTerm();
+			Mockito.doAnswer((stubInvo) -> {
+				mockFieldVariableLeader[0] = null;
+				mockFieldVariableListener[0].stopBeingLeader();
+				return null;
+			}).when(mockInstance).unregisterListener();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableLeader[0];
+			}).when(mockInstance).getCurrentLeader();
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 
-  private ScheduledExecutorFactory scheduledExecutorFactory;
-  private ConcurrentMap<String, LoadQueuePeon> loadManagementPeons;
-  private LoadQueuePeon sourceLoadQueuePeon;
-  private LoadQueuePeon destinationLoadQueuePeon;
-  private MetadataRuleManager metadataRuleManager;
-  private CountDownLatch leaderAnnouncerLatch;
-  private CountDownLatch leaderUnannouncerLatch;
-  private PathChildrenCache sourceLoadQueueChildrenCache;
-  private PathChildrenCache destinationLoadQueueChildrenCache;
-  private DruidCoordinatorConfig druidCoordinatorConfig;
-  private ObjectMapper objectMapper;
-  private JacksonConfigManager configManager;
-  private DruidNode druidNode;
-  private static final String SEGPATH = "/druid/segments";
-  private static final String SOURCE_LOAD_PATH = "/druid/loadQueue/localhost:1";
-  private static final String DESTINATION_LOAD_PATH = "/druid/loadQueue/localhost:2";
-  private static final long COORDINATOR_START_DELAY = 1;
-  private static final long COORDINATOR_PERIOD = 100;
+	private DruidCoordinator coordinator;
+	private SegmentsMetadataManager segmentsMetadataManager;
+	private DataSourcesSnapshot dataSourcesSnapshot;
+	private DruidCoordinatorRuntimeParams coordinatorRuntimeParams;
 
-  private BatchServerInventoryView baseView;
-  private CoordinatorServerView serverView;
-  private CountDownLatch segmentViewInitLatch;
-  /**
-   * The following two fields are changed during {@link #testMoveSegment()}, the change might not be visible from the
-   * thread, that runs the callback, registered in {@link #setupView()}. volatile modificator doesn't guarantee
-   * visibility either, but somewhat increases the chances.
-   */
-  private volatile CountDownLatch segmentAddedLatch;
-  private volatile CountDownLatch segmentRemovedLatch;
-  private final ObjectMapper jsonMapper;
-  private final ZkPathsConfig zkPathsConfig;
+	private ScheduledExecutorFactory scheduledExecutorFactory;
+	private ConcurrentMap<String, LoadQueuePeon> loadManagementPeons;
+	private LoadQueuePeon sourceLoadQueuePeon;
+	private LoadQueuePeon destinationLoadQueuePeon;
+	private MetadataRuleManager metadataRuleManager;
+	private CountDownLatch leaderAnnouncerLatch;
+	private CountDownLatch leaderUnannouncerLatch;
+	private PathChildrenCache sourceLoadQueueChildrenCache;
+	private PathChildrenCache destinationLoadQueueChildrenCache;
+	private DruidCoordinatorConfig druidCoordinatorConfig;
+	private ObjectMapper objectMapper;
+	private JacksonConfigManager configManager;
+	private DruidNode druidNode;
+	private static final String SEGPATH = "/druid/segments";
+	private static final String SOURCE_LOAD_PATH = "/druid/loadQueue/localhost:1";
+	private static final String DESTINATION_LOAD_PATH = "/druid/loadQueue/localhost:2";
+	private static final long COORDINATOR_START_DELAY = 1;
+	private static final long COORDINATOR_PERIOD = 100;
 
-  private ScheduledExecutorService peonExec = Execs.scheduledSingleThreaded("Master-PeonExec--%d");
-  private ExecutorService callbackExec = Execs.multiThreaded(4, "LoadQueuePeon-callbackexec--%d");
+	private BatchServerInventoryView baseView;
+	private CoordinatorServerView serverView;
+	private CountDownLatch segmentViewInitLatch;
+	/**
+	 * The following two fields are changed during {@link #testMoveSegment()}, the
+	 * change might not be visible from the thread, that runs the callback,
+	 * registered in {@link #setupView()}. volatile modificator doesn't guarantee
+	 * visibility either, but somewhat increases the chances.
+	 */
+	private volatile CountDownLatch segmentAddedLatch;
+	private volatile CountDownLatch segmentRemovedLatch;
+	private final ObjectMapper jsonMapper;
+	private final ZkPathsConfig zkPathsConfig;
 
-  public CuratorDruidCoordinatorTest()
-  {
-    jsonMapper = TestHelper.makeJsonMapper();
-    zkPathsConfig = new ZkPathsConfig();
-  }
+	private ScheduledExecutorService peonExec = Execs.scheduledSingleThreaded("Master-PeonExec--%d");
+	private ExecutorService callbackExec = Execs.multiThreaded(4, "LoadQueuePeon-callbackexec--%d");
 
-  @Before
-  public void setUp() throws Exception
-  {
-    segmentsMetadataManager = EasyMock.createNiceMock(SegmentsMetadataManager.class);
-    dataSourcesSnapshot = EasyMock.createNiceMock(DataSourcesSnapshot.class);
-    coordinatorRuntimeParams = EasyMock.createNiceMock(DruidCoordinatorRuntimeParams.class);
+	public CuratorDruidCoordinatorTest() {
+		jsonMapper = TestHelper.makeJsonMapper();
+		zkPathsConfig = new ZkPathsConfig();
+	}
 
-    metadataRuleManager = EasyMock.createNiceMock(MetadataRuleManager.class);
-    configManager = EasyMock.createNiceMock(JacksonConfigManager.class);
-    EasyMock.expect(
-        configManager.watch(
-            EasyMock.eq(CoordinatorDynamicConfig.CONFIG_KEY),
-            EasyMock.anyObject(Class.class),
-            EasyMock.anyObject()
-        )
-    ).andReturn(new AtomicReference<>(CoordinatorDynamicConfig.builder().build())).anyTimes();
-    EasyMock.expect(
-        configManager.watch(
-            EasyMock.eq(CoordinatorCompactionConfig.CONFIG_KEY),
-            EasyMock.anyObject(Class.class),
-            EasyMock.anyObject()
-        )
-    ).andReturn(new AtomicReference(CoordinatorCompactionConfig.empty())).anyTimes();
-    EasyMock.replay(configManager);
+	@Before
+	public void setUp() throws Exception {
+		segmentsMetadataManager = EasyMock.createNiceMock(SegmentsMetadataManager.class);
+		dataSourcesSnapshot = EasyMock.createNiceMock(DataSourcesSnapshot.class);
+		coordinatorRuntimeParams = EasyMock.createNiceMock(DruidCoordinatorRuntimeParams.class);
 
-    setupServerAndCurator();
-    curator.start();
-    curator.blockUntilConnected();
-    curator.create().creatingParentsIfNeeded().forPath(SEGPATH);
-    curator.create().creatingParentsIfNeeded().forPath(SOURCE_LOAD_PATH);
-    curator.create().creatingParentsIfNeeded().forPath(DESTINATION_LOAD_PATH);
+		metadataRuleManager = EasyMock.createNiceMock(MetadataRuleManager.class);
+		configManager = EasyMock.createNiceMock(JacksonConfigManager.class);
+		EasyMock.expect(configManager.watch(EasyMock.eq(CoordinatorDynamicConfig.CONFIG_KEY),
+				EasyMock.anyObject(Class.class), EasyMock.anyObject()))
+				.andReturn(new AtomicReference<>(CoordinatorDynamicConfig.builder().build())).anyTimes();
+		EasyMock.expect(configManager.watch(EasyMock.eq(CoordinatorCompactionConfig.CONFIG_KEY),
+				EasyMock.anyObject(Class.class), EasyMock.anyObject()))
+				.andReturn(new AtomicReference(CoordinatorCompactionConfig.empty())).anyTimes();
+		EasyMock.replay(configManager);
 
-    objectMapper = new DefaultObjectMapper();
-    druidCoordinatorConfig = new TestDruidCoordinatorConfig(
-        new Duration(COORDINATOR_START_DELAY),
-        new Duration(COORDINATOR_PERIOD),
-        null,
-        null,
-        new Duration(COORDINATOR_PERIOD),
-        null,
-        10,
-        new Duration("PT0s")
-    );
-    sourceLoadQueueChildrenCache = new PathChildrenCache(
-        curator,
-        SOURCE_LOAD_PATH,
-        true,
-        true,
-        Execs.singleThreaded("coordinator_test_path_children_cache_src-%d")
-    );
-    destinationLoadQueueChildrenCache = new PathChildrenCache(
-        curator,
-        DESTINATION_LOAD_PATH,
-        true,
-        true,
-        Execs.singleThreaded("coordinator_test_path_children_cache_dest-%d")
-    );
-    sourceLoadQueuePeon = new CuratorLoadQueuePeon(
-        curator,
-        SOURCE_LOAD_PATH,
-        objectMapper,
-        peonExec,
-        callbackExec,
-        druidCoordinatorConfig
-    );
-    destinationLoadQueuePeon = new CuratorLoadQueuePeon(
-        curator,
-        DESTINATION_LOAD_PATH,
-        objectMapper,
-        peonExec,
-        callbackExec,
-        druidCoordinatorConfig
-    );
-    druidNode = new DruidNode("hey", "what", false, 1234, null, true, false);
-    loadManagementPeons = new ConcurrentHashMap<>();
-    scheduledExecutorFactory = (corePoolSize, nameFormat) -> Executors.newSingleThreadScheduledExecutor();
-    leaderAnnouncerLatch = new CountDownLatch(1);
-    leaderUnannouncerLatch = new CountDownLatch(1);
-    coordinator = new DruidCoordinator(
-        druidCoordinatorConfig,
-        new ZkPathsConfig()
-        {
+		setupServerAndCurator();
+		curator.start();
+		curator.blockUntilConnected();
+		curator.create().creatingParentsIfNeeded().forPath(SEGPATH);
+		curator.create().creatingParentsIfNeeded().forPath(SOURCE_LOAD_PATH);
+		curator.create().creatingParentsIfNeeded().forPath(DESTINATION_LOAD_PATH);
 
-          @Override
-          public String getBase()
-          {
-            return "druid";
-          }
-        },
-        configManager,
-        segmentsMetadataManager,
-        baseView,
-        metadataRuleManager,
-        curator,
-        new NoopServiceEmitter(),
-        scheduledExecutorFactory,
-        null,
-        null,
-        new NoopServiceAnnouncer()
-        {
-          @Override
-          public void announce(DruidNode node)
-          {
-            // count down when this coordinator becomes the leader
-            leaderAnnouncerLatch.countDown();
-          }
+		objectMapper = new DefaultObjectMapper();
+		druidCoordinatorConfig = TestDruidCoordinatorConfig.mockDruidCoordinatorConfig1(
+				new Duration(COORDINATOR_START_DELAY), new Duration(COORDINATOR_PERIOD), null, null,
+				new Duration(COORDINATOR_PERIOD), null, 10, new Duration("PT0s"));
+		sourceLoadQueueChildrenCache = new PathChildrenCache(curator, SOURCE_LOAD_PATH, true, true,
+				Execs.singleThreaded("coordinator_test_path_children_cache_src-%d"));
+		destinationLoadQueueChildrenCache = new PathChildrenCache(curator, DESTINATION_LOAD_PATH, true, true,
+				Execs.singleThreaded("coordinator_test_path_children_cache_dest-%d"));
+		sourceLoadQueuePeon = new CuratorLoadQueuePeon(curator, SOURCE_LOAD_PATH, objectMapper, peonExec, callbackExec,
+				druidCoordinatorConfig);
+		destinationLoadQueuePeon = new CuratorLoadQueuePeon(curator, DESTINATION_LOAD_PATH, objectMapper, peonExec,
+				callbackExec, druidCoordinatorConfig);
+		druidNode = new DruidNode("hey", "what", false, 1234, null, true, false);
+		loadManagementPeons = new ConcurrentHashMap<>();
+		scheduledExecutorFactory = (corePoolSize, nameFormat) -> Executors.newSingleThreadScheduledExecutor();
+		leaderAnnouncerLatch = new CountDownLatch(1);
+		leaderUnannouncerLatch = new CountDownLatch(1);
+		coordinator = new DruidCoordinator(druidCoordinatorConfig, new ZkPathsConfig() {
 
-          @Override
-          public void unannounce(DruidNode node)
-          {
-            leaderUnannouncerLatch.countDown();
-          }
-        },
-        druidNode,
-        loadManagementPeons,
-        null,
-        new CostBalancerStrategyFactory(),
-        EasyMock.createNiceMock(LookupCoordinatorManager.class),
-        new TestDruidLeaderSelector(),
-        null
-    );
-  }
+			@Override
+			public String getBase() {
+				return "druid";
+			}
+		}, configManager, segmentsMetadataManager, baseView, metadataRuleManager, curator,
+				NoopServiceEmitter.mockServiceEmitter1(), scheduledExecutorFactory, null, null,
+				new NoopServiceAnnouncer() {
+					@Override
+					public void announce(DruidNode node) {
+						// count down when this coordinator becomes the leader
+						leaderAnnouncerLatch.countDown();
+					}
 
-  @After
-  public void tearDown() throws Exception
-  {
-    baseView.stop();
-    sourceLoadQueuePeon.stop();
-    sourceLoadQueueChildrenCache.close();
-    destinationLoadQueueChildrenCache.close();
-    tearDownServerAndCurator();
-  }
+					@Override
+					public void unannounce(DruidNode node) {
+						leaderUnannouncerLatch.countDown();
+					}
+				}, druidNode, loadManagementPeons, null, new CostBalancerStrategyFactory(),
+				EasyMock.createNiceMock(LookupCoordinatorManager.class),
+				CuratorDruidCoordinatorTest.mockDruidLeaderSelector1(), null);
+	}
 
-  @Rule
-  public final TestRule timeout = new DeadlockDetectingTimeout(60, TimeUnit.SECONDS);
+	@After
+	public void tearDown() throws Exception {
+		baseView.stop();
+		sourceLoadQueuePeon.stop();
+		sourceLoadQueueChildrenCache.close();
+		destinationLoadQueueChildrenCache.close();
+		tearDownServerAndCurator();
+	}
 
-  @Test
-  public void testStopDoesntKillPoolItDoesntOwn() throws Exception
-  {
-    setupView();
-    sourceLoadQueuePeon.stop();
-    Assert.assertFalse(peonExec.isShutdown());
-    Assert.assertFalse(callbackExec.isShutdown());
-  }
+	@Rule
+	public final TestRule timeout = new DeadlockDetectingTimeout(60, TimeUnit.SECONDS);
 
-  @Test
-  public void testMoveSegment() throws Exception
-  {
-    segmentViewInitLatch = new CountDownLatch(1);
-    segmentAddedLatch = new CountDownLatch(4);
+	@Test
+	public void testStopDoesntKillPoolItDoesntOwn() throws Exception {
+		setupView();
+		sourceLoadQueuePeon.stop();
+		Assert.assertFalse(peonExec.isShutdown());
+		Assert.assertFalse(callbackExec.isShutdown());
+	}
 
-    segmentRemovedLatch = new CountDownLatch(0);
+	@Test
+	public void testMoveSegment() throws Exception {
+		segmentViewInitLatch = new CountDownLatch(1);
+		segmentAddedLatch = new CountDownLatch(4);
 
-    CountDownLatch destCountdown = new CountDownLatch(1);
-    CountDownLatch srcCountdown = new CountDownLatch(1);
-    setupView();
+		segmentRemovedLatch = new CountDownLatch(0);
 
-    DruidServer source = new DruidServer(
-        "localhost:1",
-        "localhost:1",
-        null,
-        10000000L,
-        ServerType.HISTORICAL,
-        "default_tier",
-        0
-    );
+		CountDownLatch destCountdown = new CountDownLatch(1);
+		CountDownLatch srcCountdown = new CountDownLatch(1);
+		setupView();
 
-    DruidServer dest = new DruidServer(
-        "localhost:2",
-        "localhost:2",
-        null,
-        10000000L,
-        ServerType.HISTORICAL,
-        "default_tier",
-        0
-    );
+		DruidServer source = new DruidServer("localhost:1", "localhost:1", null, 10000000L, ServerType.HISTORICAL,
+				"default_tier", 0);
 
-    setupZNodeForServer(source, zkPathsConfig, jsonMapper);
-    setupZNodeForServer(dest, zkPathsConfig, jsonMapper);
+		DruidServer dest = new DruidServer("localhost:2", "localhost:2", null, 10000000L, ServerType.HISTORICAL,
+				"default_tier", 0);
 
-    final List<DataSegment> sourceSegments = Lists.transform(
-        ImmutableList.of(
-            Pair.of("2011-04-01/2011-04-03", "v1"),
-            Pair.of("2011-04-03/2011-04-06", "v1"),
-            Pair.of("2011-04-06/2011-04-09", "v1")
-        ),
-        input -> dataSegmentWithIntervalAndVersion(input.lhs, input.rhs)
-    );
+		setupZNodeForServer(source, zkPathsConfig, jsonMapper);
+		setupZNodeForServer(dest, zkPathsConfig, jsonMapper);
 
-    final List<DataSegment> destinationSegments = Lists.transform(
-        ImmutableList.of(
-            Pair.of("2011-03-31/2011-04-01", "v1")
-        ),
-        input -> dataSegmentWithIntervalAndVersion(input.lhs, input.rhs)
-    );
+		final List<DataSegment> sourceSegments = Lists.transform(
+				ImmutableList.of(Pair.of("2011-04-01/2011-04-03", "v1"), Pair.of("2011-04-03/2011-04-06", "v1"),
+						Pair.of("2011-04-06/2011-04-09", "v1")),
+				input -> dataSegmentWithIntervalAndVersion(input.lhs, input.rhs));
 
-    DataSegment segmentToMove = sourceSegments.get(2);
+		final List<DataSegment> destinationSegments = Lists.transform(
+				ImmutableList.of(Pair.of("2011-03-31/2011-04-01", "v1")),
+				input -> dataSegmentWithIntervalAndVersion(input.lhs, input.rhs));
 
-    List<String> sourceSegKeys = new ArrayList<>();
+		DataSegment segmentToMove = sourceSegments.get(2);
 
-    for (DataSegment segment : sourceSegments) {
-      sourceSegKeys.add(announceBatchSegmentsForServer(source, ImmutableSet.of(segment), zkPathsConfig, jsonMapper));
-    }
+		List<String> sourceSegKeys = new ArrayList<>();
 
-    for (DataSegment segment : destinationSegments) {
-      announceBatchSegmentsForServer(dest, ImmutableSet.of(segment), zkPathsConfig, jsonMapper);
-    }
+		for (DataSegment segment : sourceSegments) {
+			sourceSegKeys
+					.add(announceBatchSegmentsForServer(source, ImmutableSet.of(segment), zkPathsConfig, jsonMapper));
+		}
 
-    Assert.assertTrue(timing.forWaiting().awaitLatch(segmentViewInitLatch));
-    Assert.assertTrue(timing.forWaiting().awaitLatch(segmentAddedLatch));
+		for (DataSegment segment : destinationSegments) {
+			announceBatchSegmentsForServer(dest, ImmutableSet.of(segment), zkPathsConfig, jsonMapper);
+		}
 
-    // these child watchers are used to simulate actions of historicals, announcing a segment on noticing a load queue
-    // for the destination and unannouncing from source server when noticing a drop request
+		Assert.assertTrue(timing.forWaiting().awaitLatch(segmentViewInitLatch));
+		Assert.assertTrue(timing.forWaiting().awaitLatch(segmentAddedLatch));
 
-    sourceLoadQueueChildrenCache.getListenable().addListener(
-        (CuratorFramework curatorFramework, PathChildrenCacheEvent event) -> {
-          if (event.getType().equals(PathChildrenCacheEvent.Type.INITIALIZED)) {
-            srcCountdown.countDown();
-          } else if (CuratorUtils.isChildAdded(event)) {
-            //Simulate source server dropping segment
-            unannounceSegmentFromBatchForServer(source, segmentToMove, sourceSegKeys.get(2), zkPathsConfig);
-          }
-        }
-    );
+		// these child watchers are used to simulate actions of historicals, announcing
+		// a segment on noticing a load queue
+		// for the destination and unannouncing from source server when noticing a drop
+		// request
 
-    destinationLoadQueueChildrenCache.getListenable().addListener(
-        (CuratorFramework curatorFramework, PathChildrenCacheEvent event) -> {
-          if (event.getType().equals(PathChildrenCacheEvent.Type.INITIALIZED)) {
-            destCountdown.countDown();
-          } else if (CuratorUtils.isChildAdded(event)) {
-            //Simulate destination server loading segment
-            announceBatchSegmentsForServer(dest, ImmutableSet.of(segmentToMove), zkPathsConfig, jsonMapper);
-          }
-        }
-    );
+		sourceLoadQueueChildrenCache.getListenable()
+				.addListener((CuratorFramework curatorFramework, PathChildrenCacheEvent event) -> {
+					if (event.getType().equals(PathChildrenCacheEvent.Type.INITIALIZED)) {
+						srcCountdown.countDown();
+					} else if (CuratorUtils.isChildAdded(event)) {
+						// Simulate source server dropping segment
+						unannounceSegmentFromBatchForServer(source, segmentToMove, sourceSegKeys.get(2), zkPathsConfig);
+					}
+				});
 
-    sourceLoadQueueChildrenCache.start(PathChildrenCache.StartMode.POST_INITIALIZED_EVENT);
-    destinationLoadQueueChildrenCache.start(PathChildrenCache.StartMode.POST_INITIALIZED_EVENT);
+		destinationLoadQueueChildrenCache.getListenable()
+				.addListener((CuratorFramework curatorFramework, PathChildrenCacheEvent event) -> {
+					if (event.getType().equals(PathChildrenCacheEvent.Type.INITIALIZED)) {
+						destCountdown.countDown();
+					} else if (CuratorUtils.isChildAdded(event)) {
+						// Simulate destination server loading segment
+						announceBatchSegmentsForServer(dest, ImmutableSet.of(segmentToMove), zkPathsConfig, jsonMapper);
+					}
+				});
 
-    Assert.assertTrue(timing.forWaiting().awaitLatch(srcCountdown));
-    Assert.assertTrue(timing.forWaiting().awaitLatch(destCountdown));
+		sourceLoadQueueChildrenCache.start(PathChildrenCache.StartMode.POST_INITIALIZED_EVENT);
+		destinationLoadQueueChildrenCache.start(PathChildrenCache.StartMode.POST_INITIALIZED_EVENT);
 
+		Assert.assertTrue(timing.forWaiting().awaitLatch(srcCountdown));
+		Assert.assertTrue(timing.forWaiting().awaitLatch(destCountdown));
 
-    loadManagementPeons.put("localhost:1", sourceLoadQueuePeon);
-    loadManagementPeons.put("localhost:2", destinationLoadQueuePeon);
+		loadManagementPeons.put("localhost:1", sourceLoadQueuePeon);
+		loadManagementPeons.put("localhost:2", destinationLoadQueuePeon);
 
+		segmentRemovedLatch = new CountDownLatch(1);
+		segmentAddedLatch = new CountDownLatch(1);
 
-    segmentRemovedLatch = new CountDownLatch(1);
-    segmentAddedLatch = new CountDownLatch(1);
+		ImmutableDruidDataSource druidDataSource = EasyMock.createNiceMock(ImmutableDruidDataSource.class);
+		EasyMock.expect(druidDataSource.getSegment(EasyMock.anyObject(SegmentId.class)))
+				.andReturn(sourceSegments.get(2));
+		EasyMock.replay(druidDataSource);
+		EasyMock.expect(segmentsMetadataManager.getImmutableDataSourceWithUsedSegments(EasyMock.anyString()))
+				.andReturn(druidDataSource);
+		EasyMock.expect(coordinatorRuntimeParams.getDataSourcesSnapshot()).andReturn(dataSourcesSnapshot).anyTimes();
+		EasyMock.replay(segmentsMetadataManager, coordinatorRuntimeParams);
 
-    ImmutableDruidDataSource druidDataSource = EasyMock.createNiceMock(ImmutableDruidDataSource.class);
-    EasyMock.expect(druidDataSource.getSegment(EasyMock.anyObject(SegmentId.class))).andReturn(sourceSegments.get(2));
-    EasyMock.replay(druidDataSource);
-    EasyMock.expect(segmentsMetadataManager.getImmutableDataSourceWithUsedSegments(EasyMock.anyString()))
-            .andReturn(druidDataSource);
-    EasyMock.expect(coordinatorRuntimeParams.getDataSourcesSnapshot()).andReturn(dataSourcesSnapshot).anyTimes();
-    EasyMock.replay(segmentsMetadataManager, coordinatorRuntimeParams);
+		EasyMock.expect(dataSourcesSnapshot.getDataSource(EasyMock.anyString())).andReturn(druidDataSource).anyTimes();
+		EasyMock.replay(dataSourcesSnapshot);
+		coordinator.moveSegment(coordinatorRuntimeParams, source.toImmutableDruidServer(),
+				dest.toImmutableDruidServer(), sourceSegments.get(2), null);
 
-    EasyMock.expect(dataSourcesSnapshot.getDataSource(EasyMock.anyString())).andReturn(druidDataSource).anyTimes();
-    EasyMock.replay(dataSourcesSnapshot);
-    coordinator.moveSegment(
-        coordinatorRuntimeParams,
-        source.toImmutableDruidServer(),
-        dest.toImmutableDruidServer(),
-        sourceSegments.get(2),
-        null
-    );
+		// wait for destination server to load segment
+		Assert.assertTrue(timing.forWaiting().awaitLatch(segmentAddedLatch));
 
-    // wait for destination server to load segment
-    Assert.assertTrue(timing.forWaiting().awaitLatch(segmentAddedLatch));
+		// remove load queue key from destination server to trigger adding drop to load
+		// queue
+		curator.delete().guaranteed()
+				.forPath(ZKPaths.makePath(DESTINATION_LOAD_PATH, segmentToMove.getId().toString()));
 
-    // remove load queue key from destination server to trigger adding drop to load queue
-    curator.delete().guaranteed().forPath(ZKPaths.makePath(DESTINATION_LOAD_PATH, segmentToMove.getId().toString()));
+		// wait for drop
+		Assert.assertTrue(timing.forWaiting().awaitLatch(segmentRemovedLatch));
 
-    // wait for drop
-    Assert.assertTrue(timing.forWaiting().awaitLatch(segmentRemovedLatch));
+		// clean up drop from load queue
+		curator.delete().guaranteed().forPath(ZKPaths.makePath(SOURCE_LOAD_PATH, segmentToMove.getId().toString()));
 
-    // clean up drop from load queue
-    curator.delete().guaranteed().forPath(ZKPaths.makePath(SOURCE_LOAD_PATH, segmentToMove.getId().toString()));
+		List<DruidServer> servers = new ArrayList<>(serverView.getInventory());
 
-    List<DruidServer> servers = new ArrayList<>(serverView.getInventory());
+		Assert.assertEquals(2, servers.get(0).getTotalSegments());
+		Assert.assertEquals(2, servers.get(1).getTotalSegments());
+	}
 
-    Assert.assertEquals(2, servers.get(0).getTotalSegments());
-    Assert.assertEquals(2, servers.get(1).getTotalSegments());
-  }
+	private void setupView() throws Exception {
+		baseView = new BatchServerInventoryView(zkPathsConfig, curator, jsonMapper, Predicates.alwaysTrue()) {
+			@Override
+			public void registerSegmentCallback(Executor exec, final SegmentCallback callback) {
+				super.registerSegmentCallback(exec, new SegmentCallback() {
+					@Override
+					public CallbackAction segmentAdded(DruidServerMetadata server, DataSegment segment) {
+						CallbackAction res = callback.segmentAdded(server, segment);
+						segmentAddedLatch.countDown();
+						return res;
+					}
 
-  private static class TestDruidLeaderSelector implements DruidLeaderSelector
-  {
-    private volatile Listener listener;
-    private volatile String leader;
+					@Override
+					public CallbackAction segmentRemoved(DruidServerMetadata server, DataSegment segment) {
+						CallbackAction res = callback.segmentRemoved(server, segment);
+						segmentRemovedLatch.countDown();
+						return res;
+					}
 
-    @Override
-    public String getCurrentLeader()
-    {
-      return leader;
-    }
+					@Override
+					public CallbackAction segmentViewInitialized() {
+						CallbackAction res = callback.segmentViewInitialized();
+						segmentViewInitLatch.countDown();
+						return res;
+					}
+				});
+			}
+		};
 
-    @Override
-    public boolean isLeader()
-    {
-      return leader != null;
-    }
+		serverView = new CoordinatorServerView(baseView, new CoordinatorSegmentWatcherConfig());
 
-    @Override
-    public int localTerm()
-    {
-      return 0;
-    }
+		baseView.start();
 
-    @Override
-    public void registerListener(Listener listener)
-    {
-      this.listener = listener;
-      leader = "what:1234";
-      listener.becomeLeader();
-    }
+		sourceLoadQueuePeon.start();
+		destinationLoadQueuePeon.start();
 
-    @Override
-    public void unregisterListener()
-    {
-      leader = null;
-      listener.stopBeingLeader();
-    }
-  }
+		coordinator = new DruidCoordinator(druidCoordinatorConfig, new ZkPathsConfig() {
 
-  private void setupView() throws Exception
-  {
-    baseView = new BatchServerInventoryView(
-        zkPathsConfig,
-        curator,
-        jsonMapper,
-        Predicates.alwaysTrue()
-    )
-    {
-      @Override
-      public void registerSegmentCallback(Executor exec, final SegmentCallback callback)
-      {
-        super.registerSegmentCallback(
-            exec,
-            new SegmentCallback()
-            {
-              @Override
-              public CallbackAction segmentAdded(DruidServerMetadata server, DataSegment segment)
-              {
-                CallbackAction res = callback.segmentAdded(server, segment);
-                segmentAddedLatch.countDown();
-                return res;
-              }
+			@Override
+			public String getBase() {
+				return "druid";
+			}
+		}, configManager, segmentsMetadataManager, baseView, metadataRuleManager, curator,
+				NoopServiceEmitter.mockServiceEmitter1(), scheduledExecutorFactory, null, null,
+				new NoopServiceAnnouncer() {
+					@Override
+					public void announce(DruidNode node) {
+						// count down when this coordinator becomes the leader
+						leaderAnnouncerLatch.countDown();
+					}
 
-              @Override
-              public CallbackAction segmentRemoved(DruidServerMetadata server, DataSegment segment)
-              {
-                CallbackAction res = callback.segmentRemoved(server, segment);
-                segmentRemovedLatch.countDown();
-                return res;
-              }
+					@Override
+					public void unannounce(DruidNode node) {
+						leaderUnannouncerLatch.countDown();
+					}
+				}, druidNode, loadManagementPeons, null, new CostBalancerStrategyFactory(),
+				EasyMock.createNiceMock(LookupCoordinatorManager.class),
+				CuratorDruidCoordinatorTest.mockDruidLeaderSelector1(), null);
+		CuratorDruidCoordinatorTest.mockDruidLeaderSelector1();
+	}
 
-              @Override
-              public CallbackAction segmentViewInitialized()
-              {
-                CallbackAction res = callback.segmentViewInitialized();
-                segmentViewInitLatch.countDown();
-                return res;
-              }
-            }
-        );
-      }
-    };
-
-    serverView = new CoordinatorServerView(baseView, new CoordinatorSegmentWatcherConfig());
-
-    baseView.start();
-
-    sourceLoadQueuePeon.start();
-    destinationLoadQueuePeon.start();
-
-    coordinator = new DruidCoordinator(
-        druidCoordinatorConfig,
-        new ZkPathsConfig()
-        {
-
-          @Override
-          public String getBase()
-          {
-            return "druid";
-          }
-        },
-        configManager,
-        segmentsMetadataManager,
-        baseView,
-        metadataRuleManager,
-        curator,
-        new NoopServiceEmitter(),
-        scheduledExecutorFactory,
-        null,
-        null,
-        new NoopServiceAnnouncer()
-        {
-          @Override
-          public void announce(DruidNode node)
-          {
-            // count down when this coordinator becomes the leader
-            leaderAnnouncerLatch.countDown();
-          }
-
-          @Override
-          public void unannounce(DruidNode node)
-          {
-            leaderUnannouncerLatch.countDown();
-          }
-        },
-        druidNode,
-        loadManagementPeons,
-        null,
-        new CostBalancerStrategyFactory(),
-        EasyMock.createNiceMock(LookupCoordinatorManager.class),
-        new TestDruidLeaderSelector(),
-        null
-    );
-    new TestDruidLeaderSelector();
-  }
-
-  private DataSegment dataSegmentWithIntervalAndVersion(String intervalStr, String version)
-  {
-    return DataSegment.builder()
-                      .dataSource("test_curator_druid_coordinator")
-                      .interval(Intervals.of(intervalStr))
-                      .loadSpec(ImmutableMap.of("type", "local", "path", "somewhere"))
-                      .version(version)
-                      .dimensions(ImmutableList.of())
-                      .metrics(ImmutableList.of())
-                      .shardSpec(NoneShardSpec.instance())
-                      .binaryVersion(9)
-                      .size(0)
-                      .build();
-  }
+	private DataSegment dataSegmentWithIntervalAndVersion(String intervalStr, String version) {
+		return DataSegment.builder().dataSource("test_curator_druid_coordinator").interval(Intervals.of(intervalStr))
+				.loadSpec(ImmutableMap.of("type", "local", "path", "somewhere")).version(version)
+				.dimensions(ImmutableList.of()).metrics(ImmutableList.of()).shardSpec(NoneShardSpec.instance())
+				.binaryVersion(9).size(0).build();
+	}
 }

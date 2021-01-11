@@ -20,18 +20,14 @@
 package org.apache.druid.security.authorization;
 
 import org.apache.druid.security.basic.authorization.db.cache.BasicAuthorizerCacheNotifier;
+import org.mockito.Mockito;
 
-public class NoopBasicAuthorizerCacheNotifier implements BasicAuthorizerCacheNotifier
-{
-  @Override
-  public void addUpdateUser(String authorizerPrefix, byte[] userAndRoleMap)
-  {
-
-  }
-
-  @Override
-  public void addUpdateGroupMapping(String authorizerPrefix, byte[] groupMappingAndRoleMap)
-  {
-
-  }
+public class NoopBasicAuthorizerCacheNotifier {
+	static public BasicAuthorizerCacheNotifier mockBasicAuthorizerCacheNotifier1() {
+		BasicAuthorizerCacheNotifier mockInstance = Mockito.spy(BasicAuthorizerCacheNotifier.class);
+		try {
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 }

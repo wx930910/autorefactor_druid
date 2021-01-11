@@ -19,55 +19,33 @@
 
 package org.apache.druid.server.coordinator;
 
+import java.util.concurrent.ConcurrentSkipListSet;
+
 import org.apache.druid.java.util.common.concurrent.Execs;
 import org.apache.druid.timeline.DataSegment;
 import org.joda.time.Duration;
 
-import java.util.concurrent.ConcurrentSkipListSet;
+public class LoadQueuePeonTester extends CuratorLoadQueuePeon {
+	private final ConcurrentSkipListSet<DataSegment> segmentsToLoad = new ConcurrentSkipListSet<DataSegment>();
 
-public class LoadQueuePeonTester extends CuratorLoadQueuePeon
-{
-  private final ConcurrentSkipListSet<DataSegment> segmentsToLoad = new ConcurrentSkipListSet<DataSegment>();
+	public LoadQueuePeonTester() {
+		super(null, null, null, Execs.scheduledSingleThreaded("LoadQueuePeonTester--%d"), null,
+				TestDruidCoordinatorConfig.mockDruidCoordinatorConfig1(null, null, null, new Duration(1), null, null,
+						10, new Duration("PT1s")));
+	}
 
-  public LoadQueuePeonTester()
-  {
-    super(
-        null,
-        null,
-        null,
-        Execs.scheduledSingleThreaded("LoadQueuePeonTester--%d"),
-        null,
-        new TestDruidCoordinatorConfig(
-            null,
-            null,
-            null,
-            new Duration(1),
-            null,
-            null,
-            10,
-            new Duration("PT1s")
-        )
-    );
-  }
+	@Override
+	public void loadSegment(DataSegment segment, LoadPeonCallback callback) {
+		segmentsToLoad.add(segment);
+	}
 
-  @Override
-  public void loadSegment(
-      DataSegment segment,
-      LoadPeonCallback callback
-  )
-  {
-    segmentsToLoad.add(segment);
-  }
+	@Override
+	public ConcurrentSkipListSet<DataSegment> getSegmentsToLoad() {
+		return segmentsToLoad;
+	}
 
-  @Override
-  public ConcurrentSkipListSet<DataSegment> getSegmentsToLoad()
-  {
-    return segmentsToLoad;
-  }
-
-  @Override
-  public int getNumberOfSegmentsInQueue()
-  {
-    return segmentsToLoad.size();
-  }
+	@Override
+	public int getNumberOfSegmentsInQueue() {
+		return segmentsToLoad.size();
+	}
 }

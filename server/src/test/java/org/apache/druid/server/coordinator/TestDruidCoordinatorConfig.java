@@ -20,69 +20,59 @@
 package org.apache.druid.server.coordinator;
 
 import org.joda.time.Duration;
+import org.mockito.Mockito;
 
-public class TestDruidCoordinatorConfig extends DruidCoordinatorConfig {
+public class TestDruidCoordinatorConfig {
 
-	private final Duration coordinatorStartDelay;
-	private final Duration coordinatorPeriod;
-	private final Duration coordinatorIndexingPeriod;
-	private final Duration loadTimeoutDelay;
-	private final Duration coordinatorKillPeriod;
-	private final Duration coordinatorKillDurationToRetain;
-	private final Duration getLoadQueuePeonRepeatDelay;
-	private final int coordinatorKillMaxSegments;
-
-	public TestDruidCoordinatorConfig(Duration coordinatorStartDelay, Duration coordinatorPeriod,
-			Duration coordinatorIndexingPeriod, Duration loadTimeoutDelay, Duration coordinatorKillPeriod,
-			Duration coordinatorKillDurationToRetain, int coordinatorKillMaxSegments,
+	static public DruidCoordinatorConfig mockDruidCoordinatorConfig1(Duration coordinatorStartDelay,
+			Duration coordinatorPeriod, Duration coordinatorIndexingPeriod, Duration loadTimeoutDelay,
+			Duration coordinatorKillPeriod, Duration coordinatorKillDurationToRetain, int coordinatorKillMaxSegments,
 			Duration getLoadQueuePeonRepeatDelay) {
-		this.coordinatorStartDelay = coordinatorStartDelay;
-		this.coordinatorPeriod = coordinatorPeriod;
-		this.coordinatorIndexingPeriod = coordinatorIndexingPeriod;
-		this.loadTimeoutDelay = loadTimeoutDelay;
-		this.coordinatorKillPeriod = coordinatorKillPeriod;
-		this.coordinatorKillDurationToRetain = coordinatorKillDurationToRetain;
-		this.coordinatorKillMaxSegments = coordinatorKillMaxSegments;
-		this.getLoadQueuePeonRepeatDelay = getLoadQueuePeonRepeatDelay;
-	}
-
-	@Override
-	public Duration getCoordinatorStartDelay() {
-		return coordinatorStartDelay;
-	}
-
-	@Override
-	public Duration getCoordinatorPeriod() {
-		return coordinatorPeriod;
-	}
-
-	@Override
-	public Duration getCoordinatorIndexingPeriod() {
-		return coordinatorIndexingPeriod;
-	}
-
-	@Override
-	public Duration getCoordinatorKillPeriod() {
-		return coordinatorKillPeriod;
-	}
-
-	@Override
-	public Duration getCoordinatorKillDurationToRetain() {
-		return coordinatorKillDurationToRetain;
-	}
-
-	@Override
-	public int getCoordinatorKillMaxSegments() {
-		return coordinatorKillMaxSegments;
-	}
-
-	@Override
-	public Duration getLoadTimeoutDelay() {
-		return loadTimeoutDelay == null ? super.getLoadTimeoutDelay() : loadTimeoutDelay;
-	}
-
-	@Override
-	public Duration getLoadQueuePeonRepeatDelay() {
-		return getLoadQueuePeonRepeatDelay;
+		Duration[] mockFieldVariableCoordinatorPeriod = new Duration[1];
+		Duration[] mockFieldVariableCoordinatorKillDurationToRetain = new Duration[1];
+		int[] mockFieldVariableCoordinatorKillMaxSegments = new int[1];
+		Duration[] mockFieldVariableCoordinatorIndexingPeriod = new Duration[1];
+		Duration[] mockFieldVariableGetLoadQueuePeonRepeatDelay = new Duration[1];
+		Duration[] mockFieldVariableLoadTimeoutDelay = new Duration[1];
+		Duration[] mockFieldVariableCoordinatorKillPeriod = new Duration[1];
+		Duration[] mockFieldVariableCoordinatorStartDelay = new Duration[1];
+		DruidCoordinatorConfig mockInstance = Mockito.spy(DruidCoordinatorConfig.class);
+		mockFieldVariableCoordinatorStartDelay[0] = coordinatorStartDelay;
+		mockFieldVariableCoordinatorPeriod[0] = coordinatorPeriod;
+		mockFieldVariableCoordinatorIndexingPeriod[0] = coordinatorIndexingPeriod;
+		mockFieldVariableLoadTimeoutDelay[0] = loadTimeoutDelay;
+		mockFieldVariableCoordinatorKillPeriod[0] = coordinatorKillPeriod;
+		mockFieldVariableCoordinatorKillDurationToRetain[0] = coordinatorKillDurationToRetain;
+		mockFieldVariableCoordinatorKillMaxSegments[0] = coordinatorKillMaxSegments;
+		mockFieldVariableGetLoadQueuePeonRepeatDelay[0] = getLoadQueuePeonRepeatDelay;
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableLoadTimeoutDelay[0] == null ? stubInvo.callRealMethod()
+						: mockFieldVariableLoadTimeoutDelay[0];
+			}).when(mockInstance).getLoadTimeoutDelay();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableCoordinatorKillMaxSegments[0];
+			}).when(mockInstance).getCoordinatorKillMaxSegments();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableCoordinatorKillPeriod[0];
+			}).when(mockInstance).getCoordinatorKillPeriod();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableCoordinatorIndexingPeriod[0];
+			}).when(mockInstance).getCoordinatorIndexingPeriod();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableGetLoadQueuePeonRepeatDelay[0];
+			}).when(mockInstance).getLoadQueuePeonRepeatDelay();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableCoordinatorKillDurationToRetain[0];
+			}).when(mockInstance).getCoordinatorKillDurationToRetain();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableCoordinatorStartDelay[0];
+			}).when(mockInstance).getCoordinatorStartDelay();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableCoordinatorPeriod[0];
+			}).when(mockInstance).getCoordinatorPeriod();
+		} catch (Exception exception) {
+		}
+		return mockInstance;
 	}
 }

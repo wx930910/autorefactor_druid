@@ -19,7 +19,11 @@
 
 package org.apache.druid.server;
 
-import com.google.common.collect.ImmutableMap;
+import java.nio.ByteBuffer;
+import java.util.Map;
+
+import javax.annotation.Nullable;
+
 import org.apache.druid.client.cache.CacheConfig;
 import org.apache.druid.collections.CloseableStupidPool;
 import org.apache.druid.java.util.common.Pair;
@@ -75,250 +79,162 @@ import org.apache.druid.server.scheduling.ManualQueryPrioritizationStrategy;
 import org.apache.druid.server.scheduling.NoQueryLaningStrategy;
 import org.apache.druid.timeline.VersionedIntervalTimeline;
 
-import javax.annotation.Nullable;
-import java.nio.ByteBuffer;
-import java.util.Map;
+import com.google.common.collect.ImmutableMap;
 
 /**
  * Utilities for creating query-stack objects for tests.
  */
-public class QueryStackTests
-{
-  public static final QueryScheduler DEFAULT_NOOP_SCHEDULER = new QueryScheduler(
-      0,
-      ManualQueryPrioritizationStrategy.INSTANCE,
-      NoQueryLaningStrategy.INSTANCE,
-      new ServerConfig()
-  );
-  private static final ServiceEmitter EMITTER = new NoopServiceEmitter();
-  private static final int COMPUTE_BUFFER_SIZE = 10 * 1024 * 1024;
+public class QueryStackTests {
+	public static final QueryScheduler DEFAULT_NOOP_SCHEDULER = new QueryScheduler(0,
+			ManualQueryPrioritizationStrategy.INSTANCE, NoQueryLaningStrategy.INSTANCE, new ServerConfig());
+	private static final ServiceEmitter EMITTER = NoopServiceEmitter.mockServiceEmitter1();
+	private static final int COMPUTE_BUFFER_SIZE = 10 * 1024 * 1024;
 
-  private QueryStackTests()
-  {
-    // No instantiation.
-  }
+	private QueryStackTests() {
+		// No instantiation.
+	}
 
-  public static ClientQuerySegmentWalker createClientQuerySegmentWalker(
-      final QuerySegmentWalker clusterWalker,
-      final QuerySegmentWalker localWalker,
-      final QueryRunnerFactoryConglomerate conglomerate,
-      final JoinableFactory joinableFactory,
-      final ServerConfig serverConfig
-  )
-  {
-    return new ClientQuerySegmentWalker(
-        EMITTER,
-        clusterWalker,
-        localWalker,
-        new QueryToolChestWarehouse()
-        {
-          @Override
-          public <T, QueryType extends Query<T>> QueryToolChest<T, QueryType> getToolChest(final QueryType query)
-          {
-            return conglomerate.findFactory(query).getToolchest();
-          }
-        },
-        joinableFactory,
-        new RetryQueryRunnerConfig(),
-        TestHelper.makeJsonMapper(),
-        serverConfig,
-        null /* Cache */,
-        new CacheConfig()
-        {
-          @Override
-          public boolean isPopulateCache()
-          {
-            return false;
-          }
+	public static ClientQuerySegmentWalker createClientQuerySegmentWalker(final QuerySegmentWalker clusterWalker,
+			final QuerySegmentWalker localWalker, final QueryRunnerFactoryConglomerate conglomerate,
+			final JoinableFactory joinableFactory, final ServerConfig serverConfig) {
+		return new ClientQuerySegmentWalker(EMITTER, clusterWalker, localWalker, new QueryToolChestWarehouse() {
+			@Override
+			public <T, QueryType extends Query<T>> QueryToolChest<T, QueryType> getToolChest(final QueryType query) {
+				return conglomerate.findFactory(query).getToolchest();
+			}
+		}, joinableFactory, new RetryQueryRunnerConfig(), TestHelper.makeJsonMapper(), serverConfig, null /* Cache */,
+				new CacheConfig() {
+					@Override
+					public boolean isPopulateCache() {
+						return false;
+					}
 
-          @Override
-          public boolean isUseCache()
-          {
-            return false;
-          }
+					@Override
+					public boolean isUseCache() {
+						return false;
+					}
 
-          @Override
-          public boolean isPopulateResultLevelCache()
-          {
-            return false;
-          }
+					@Override
+					public boolean isPopulateResultLevelCache() {
+						return false;
+					}
 
-          @Override
-          public boolean isUseResultLevelCache()
-          {
-            return false;
-          }
-        }
-    );
-  }
+					@Override
+					public boolean isUseResultLevelCache() {
+						return false;
+					}
+				});
+	}
 
-  public static TestClusterQuerySegmentWalker createClusterQuerySegmentWalker(
-      Map<String, VersionedIntervalTimeline<String, ReferenceCountingSegment>> timelines,
-      JoinableFactory joinableFactory,
-      QueryRunnerFactoryConglomerate conglomerate,
-      @Nullable QueryScheduler scheduler
-  )
-  {
-    return new TestClusterQuerySegmentWalker(timelines, joinableFactory, conglomerate, scheduler);
-  }
+	public static TestClusterQuerySegmentWalker createClusterQuerySegmentWalker(
+			Map<String, VersionedIntervalTimeline<String, ReferenceCountingSegment>> timelines,
+			JoinableFactory joinableFactory, QueryRunnerFactoryConglomerate conglomerate,
+			@Nullable QueryScheduler scheduler) {
+		return new TestClusterQuerySegmentWalker(timelines, joinableFactory, conglomerate, scheduler);
+	}
 
-  public static LocalQuerySegmentWalker createLocalQuerySegmentWalker(
-      final QueryRunnerFactoryConglomerate conglomerate,
-      final SegmentWrangler segmentWrangler,
-      final JoinableFactory joinableFactory,
-      final QueryScheduler scheduler
-  )
-  {
-    return new LocalQuerySegmentWalker(
-        conglomerate,
-        segmentWrangler,
-        joinableFactory,
-        scheduler,
-        EMITTER
-    );
-  }
+	public static LocalQuerySegmentWalker createLocalQuerySegmentWalker(
+			final QueryRunnerFactoryConglomerate conglomerate, final SegmentWrangler segmentWrangler,
+			final JoinableFactory joinableFactory, final QueryScheduler scheduler) {
+		return new LocalQuerySegmentWalker(conglomerate, segmentWrangler, joinableFactory, scheduler, EMITTER);
+	}
 
-  public static DruidProcessingConfig getProcessingConfig(boolean useParallelMergePoolConfigured)
-  {
-    return new DruidProcessingConfig()
-    {
-      @Override
-      public String getFormatString()
-      {
-        return null;
-      }
+	public static DruidProcessingConfig getProcessingConfig(boolean useParallelMergePoolConfigured) {
+		return new DruidProcessingConfig() {
+			@Override
+			public String getFormatString() {
+				return null;
+			}
 
-      @Override
-      public int intermediateComputeSizeBytes()
-      {
-        return COMPUTE_BUFFER_SIZE;
-      }
+			@Override
+			public int intermediateComputeSizeBytes() {
+				return COMPUTE_BUFFER_SIZE;
+			}
 
-      @Override
-      public int getNumThreads()
-      {
-        // Only use 1 thread for tests.
-        return 1;
-      }
+			@Override
+			public int getNumThreads() {
+				// Only use 1 thread for tests.
+				return 1;
+			}
 
-      @Override
-      public int getNumMergeBuffers()
-      {
-        // Need 3 buffers for CalciteQueryTest.testDoubleNestedGroupby.
-        // Two buffers for the broker and one for the queryable.
-        return 3;
-      }
+			@Override
+			public int getNumMergeBuffers() {
+				// Need 3 buffers for CalciteQueryTest.testDoubleNestedGroupby.
+				// Two buffers for the broker and one for the queryable.
+				return 3;
+			}
 
-      @Override
-      public boolean useParallelMergePoolConfigured()
-      {
-        return useParallelMergePoolConfigured;
-      }
-    };
-  }
+			@Override
+			public boolean useParallelMergePoolConfigured() {
+				return useParallelMergePoolConfigured;
+			}
+		};
+	}
 
-  /**
-   * Returns a new {@link QueryRunnerFactoryConglomerate}. Adds relevant closeables to the passed-in {@link Closer}.
-   */
-  public static QueryRunnerFactoryConglomerate createQueryRunnerFactoryConglomerate(final Closer closer)
-  {
-    return createQueryRunnerFactoryConglomerate(closer, true);
-  }
+	/**
+	 * Returns a new {@link QueryRunnerFactoryConglomerate}. Adds relevant
+	 * closeables to the passed-in {@link Closer}.
+	 */
+	public static QueryRunnerFactoryConglomerate createQueryRunnerFactoryConglomerate(final Closer closer) {
+		return createQueryRunnerFactoryConglomerate(closer, true);
+	}
 
-  public static QueryRunnerFactoryConglomerate createQueryRunnerFactoryConglomerate(
-      final Closer closer,
-      final boolean useParallelMergePoolConfigured
-  )
-  {
-    final CloseableStupidPool<ByteBuffer> stupidPool = new CloseableStupidPool<>(
-        "TopNQueryRunnerFactory-bufferPool",
-        () -> ByteBuffer.allocate(COMPUTE_BUFFER_SIZE)
-    );
+	public static QueryRunnerFactoryConglomerate createQueryRunnerFactoryConglomerate(final Closer closer,
+			final boolean useParallelMergePoolConfigured) {
+		final CloseableStupidPool<ByteBuffer> stupidPool = new CloseableStupidPool<>(
+				"TopNQueryRunnerFactory-bufferPool", () -> ByteBuffer.allocate(COMPUTE_BUFFER_SIZE));
 
-    closer.register(stupidPool);
+		closer.register(stupidPool);
 
-    final Pair<GroupByQueryRunnerFactory, Closer> factoryCloserPair =
-        GroupByQueryRunnerTest.makeQueryRunnerFactory(
-            GroupByQueryRunnerTest.DEFAULT_MAPPER,
-            new GroupByQueryConfig()
-            {
-              @Override
-              public String getDefaultStrategy()
-              {
-                return GroupByStrategySelector.STRATEGY_V2;
-              }
-            },
-            getProcessingConfig(useParallelMergePoolConfigured)
-        );
+		final Pair<GroupByQueryRunnerFactory, Closer> factoryCloserPair = GroupByQueryRunnerTest
+				.makeQueryRunnerFactory(GroupByQueryRunnerTest.DEFAULT_MAPPER, new GroupByQueryConfig() {
+					@Override
+					public String getDefaultStrategy() {
+						return GroupByStrategySelector.STRATEGY_V2;
+					}
+				}, getProcessingConfig(useParallelMergePoolConfigured));
 
-    final GroupByQueryRunnerFactory groupByQueryRunnerFactory = factoryCloserPair.lhs;
-    closer.register(factoryCloserPair.rhs);
+		final GroupByQueryRunnerFactory groupByQueryRunnerFactory = factoryCloserPair.lhs;
+		closer.register(factoryCloserPair.rhs);
 
-    final QueryRunnerFactoryConglomerate conglomerate = new DefaultQueryRunnerFactoryConglomerate(
-        ImmutableMap.<Class<? extends Query>, QueryRunnerFactory>builder()
-            .put(
-                SegmentMetadataQuery.class,
-                new SegmentMetadataQueryRunnerFactory(
-                    new SegmentMetadataQueryQueryToolChest(
-                        new SegmentMetadataQueryConfig("P1W")
-                    ),
-                    QueryRunnerTestHelper.NOOP_QUERYWATCHER
-                )
-            )
-            .put(
-                ScanQuery.class,
-                new ScanQueryRunnerFactory(
-                    new ScanQueryQueryToolChest(
-                        new ScanQueryConfig(),
-                        new DefaultGenericQueryMetricsFactory()
-                    ),
-                    new ScanQueryEngine(),
-                    new ScanQueryConfig()
-                )
-            )
-            .put(
-                TimeseriesQuery.class,
-                new TimeseriesQueryRunnerFactory(
-                    new TimeseriesQueryQueryToolChest(),
-                    new TimeseriesQueryEngine(),
-                    QueryRunnerTestHelper.NOOP_QUERYWATCHER
-                )
-            )
-            .put(
-                TopNQuery.class,
-                new TopNQueryRunnerFactory(
-                    stupidPool,
-                    new TopNQueryQueryToolChest(new TopNQueryConfig()),
-                    QueryRunnerTestHelper.NOOP_QUERYWATCHER
-                )
-            )
-            .put(GroupByQuery.class, groupByQueryRunnerFactory)
-            .build()
-    );
+		final QueryRunnerFactoryConglomerate conglomerate = new DefaultQueryRunnerFactoryConglomerate(
+				ImmutableMap.<Class<? extends Query>, QueryRunnerFactory>builder()
+						.put(SegmentMetadataQuery.class,
+								new SegmentMetadataQueryRunnerFactory(
+										new SegmentMetadataQueryQueryToolChest(new SegmentMetadataQueryConfig("P1W")),
+										QueryRunnerTestHelper.NOOP_QUERYWATCHER))
+						.put(ScanQuery.class,
+								new ScanQueryRunnerFactory(
+										new ScanQueryQueryToolChest(new ScanQueryConfig(),
+												new DefaultGenericQueryMetricsFactory()),
+										new ScanQueryEngine(), new ScanQueryConfig()))
+						.put(TimeseriesQuery.class,
+								new TimeseriesQueryRunnerFactory(new TimeseriesQueryQueryToolChest(),
+										new TimeseriesQueryEngine(), QueryRunnerTestHelper.NOOP_QUERYWATCHER))
+						.put(TopNQuery.class,
+								new TopNQueryRunnerFactory(stupidPool,
+										new TopNQueryQueryToolChest(new TopNQueryConfig()),
+										QueryRunnerTestHelper.NOOP_QUERYWATCHER))
+						.put(GroupByQuery.class, groupByQueryRunnerFactory).build());
 
-    return conglomerate;
-  }
+		return conglomerate;
+	}
 
-  public static JoinableFactory makeJoinableFactoryForLookup(
-      LookupExtractorFactoryContainerProvider lookupProvider
-  )
-  {
-    return makeJoinableFactoryFromDefault(lookupProvider, null);
-  }
+	public static JoinableFactory makeJoinableFactoryForLookup(LookupExtractorFactoryContainerProvider lookupProvider) {
+		return makeJoinableFactoryFromDefault(lookupProvider, null);
+	}
 
-  public static JoinableFactory makeJoinableFactoryFromDefault(
-      @Nullable LookupExtractorFactoryContainerProvider lookupProvider,
-      @Nullable Map<Class<? extends DataSource>, JoinableFactory> custom
-  )
-  {
-    ImmutableMap.Builder<Class<? extends DataSource>, JoinableFactory> builder = ImmutableMap.builder();
-    builder.put(InlineDataSource.class, new InlineJoinableFactory());
-    if (lookupProvider != null) {
-      builder.put(LookupDataSource.class, new LookupJoinableFactory(lookupProvider));
-    }
-    if (custom != null) {
-      builder.putAll(custom);
-    }
-    return MapJoinableFactoryTest.fromMap(builder.build());
-  }
+	public static JoinableFactory makeJoinableFactoryFromDefault(
+			@Nullable LookupExtractorFactoryContainerProvider lookupProvider,
+			@Nullable Map<Class<? extends DataSource>, JoinableFactory> custom) {
+		ImmutableMap.Builder<Class<? extends DataSource>, JoinableFactory> builder = ImmutableMap.builder();
+		builder.put(InlineDataSource.class, new InlineJoinableFactory());
+		if (lookupProvider != null) {
+			builder.put(LookupDataSource.class, new LookupJoinableFactory(lookupProvider));
+		}
+		if (custom != null) {
+			builder.putAll(custom);
+		}
+		return MapJoinableFactoryTest.fromMap(builder.build());
+	}
 }

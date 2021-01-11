@@ -19,6 +19,15 @@
 
 package org.apache.druid.data.input;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+
+import javax.annotation.Nullable;
+
+import org.apache.druid.data.input.HandlingInputRowIterator.InputRowHandler;
 import org.apache.druid.java.util.common.CloseableIterators;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.easymock.EasyMock;
@@ -27,153 +36,124 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
-
-import javax.annotation.Nullable;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
+import org.mockito.Mockito;
 
 @RunWith(Enclosed.class)
-public class HandlingInputRowIteratorTest
-{
-  public static class AbsentRowTest
-  {
-    private static final CloseableIterator<InputRow> EMPTY_ITERATOR = CloseableIterators.withEmptyBaggage(
-        new Iterator<InputRow>()
-        {
-          @Override
-          public boolean hasNext()
-          {
-            return false;
-          }
+public class HandlingInputRowIteratorTest {
+	public static class AbsentRowTest {
+		private static final CloseableIterator<InputRow> EMPTY_ITERATOR = CloseableIterators
+				.withEmptyBaggage(new Iterator<InputRow>() {
+					@Override
+					public boolean hasNext() {
+						return false;
+					}
 
-          @Nullable
-          @Override
-          public InputRow next()
-          {
-            throw new NoSuchElementException();
-          }
-        }
-    );
+					@Nullable
+					@Override
+					public InputRow next() {
+						throw new NoSuchElementException();
+					}
+				});
 
-    private HandlingInputRowIterator target;
+		private HandlingInputRowIterator target;
 
-    @Before
-    public void setup()
-    {
-      target = new HandlingInputRowIterator(EMPTY_ITERATOR, Collections.emptyList());
-    }
+		@Before
+		public void setup() {
+			target = new HandlingInputRowIterator(EMPTY_ITERATOR, Collections.emptyList());
+		}
 
-    @Test
-    public void doesNotHaveNext()
-    {
-      Assert.assertFalse(target.hasNext());
-    }
+		@Test
+		public void doesNotHaveNext() {
+			Assert.assertFalse(target.hasNext());
+		}
 
-    @Test(expected = NoSuchElementException.class)
-    public void throwsExceptionWhenYieldingNext()
-    {
-      target.next();
-    }
-  }
+		@Test(expected = NoSuchElementException.class)
+		public void throwsExceptionWhenYieldingNext() {
+			target.next();
+		}
+	}
 
-  public static class PresentRowTest
-  {
-    private static final InputRow INPUT_ROW1 = EasyMock.mock(InputRow.class);
-    private static final InputRow INPUT_ROW2 = EasyMock.mock(InputRow.class);
-    private static final List<InputRow> INPUT_ROWS = Arrays.asList(INPUT_ROW1, INPUT_ROW2);
+	public static class PresentRowTest {
+		boolean[] unsuccessfulHandlerSuccessful = new boolean[1];
 
-    private TestInputRowHandler successfulHandler;
-    private TestInputRowHandler unsuccessfulHandler;
+		boolean[] successfulHandlerSuccessful = new boolean[1];
 
-    @Before
-    public void setup()
-    {
-      successfulHandler = new TestInputRowHandler(true);
-      unsuccessfulHandler = new TestInputRowHandler(false);
-    }
+		private static final InputRow INPUT_ROW1 = EasyMock.mock(InputRow.class);
+		private static final InputRow INPUT_ROW2 = EasyMock.mock(InputRow.class);
+		private static final List<InputRow> INPUT_ROWS = Arrays.asList(INPUT_ROW1, INPUT_ROW2);
 
-    @Test
-    public void hasNext()
-    {
-      HandlingInputRowIterator target = createInputRowIterator(unsuccessfulHandler, unsuccessfulHandler);
-      Assert.assertTrue(target.hasNext());
-      Assert.assertFalse(unsuccessfulHandler.invoked);
-    }
+		private InputRowHandler successfulHandler;
+		private InputRowHandler unsuccessfulHandler;
 
-    @Test
-    public void yieldsNextIfUnhandled()
-    {
-      HandlingInputRowIterator target = createInputRowIterator(unsuccessfulHandler, unsuccessfulHandler);
-      Assert.assertEquals(INPUT_ROW1, target.next());
-      Assert.assertTrue(unsuccessfulHandler.invoked);
-    }
+		@Before
+		public void setup() {
+			successfulHandler = Mockito.spy(HandlingInputRowIterator.InputRowHandler.class);
+			successfulHandlerSuccessful[0] = true;
+			try {
+				Mockito.doAnswer((stubInvo) -> {
+					return successfulHandlerSuccessful[0];
+				}).when(successfulHandler).handle(Mockito.any(InputRow.class));
+			} catch (Exception exception) {
+			}
+			unsuccessfulHandler = Mockito.spy(HandlingInputRowIterator.InputRowHandler.class);
+			unsuccessfulHandlerSuccessful[0] = false;
+			try {
+				Mockito.doAnswer((stubInvo) -> {
+					return unsuccessfulHandlerSuccessful[0];
+				}).when(unsuccessfulHandler).handle(Mockito.any(InputRow.class));
+			} catch (Exception exception) {
+			}
+		}
 
-    @Test
-    public void yieldsNullIfHandledByFirst()
-    {
-      HandlingInputRowIterator target = createInputRowIterator(successfulHandler, unsuccessfulHandler);
-      Assert.assertNull(target.next());
-      Assert.assertTrue(successfulHandler.invoked);
-      Assert.assertFalse(unsuccessfulHandler.invoked);
-    }
+		@Test
+		public void hasNext() {
+			HandlingInputRowIterator target = createInputRowIterator(unsuccessfulHandler, unsuccessfulHandler);
+			Assert.assertTrue(target.hasNext());
+			Mockito.verify(unsuccessfulHandler, Mockito.never()).handle(Mockito.any(InputRow.class));
+		}
 
-    @Test
-    public void yieldsNullIfHandledBySecond()
-    {
-      HandlingInputRowIterator target = createInputRowIterator(unsuccessfulHandler, successfulHandler);
-      Assert.assertNull(target.next());
-      Assert.assertTrue(unsuccessfulHandler.invoked);
-      Assert.assertTrue(successfulHandler.invoked);
-    }
+		@Test
+		public void yieldsNextIfUnhandled() {
+			HandlingInputRowIterator target = createInputRowIterator(unsuccessfulHandler, unsuccessfulHandler);
+			Assert.assertEquals(INPUT_ROW1, target.next());
+			Mockito.verify(unsuccessfulHandler, Mockito.atLeastOnce()).handle(Mockito.any(InputRow.class));
+		}
 
-    private static HandlingInputRowIterator createInputRowIterator(
-        HandlingInputRowIterator.InputRowHandler firstHandler,
-        HandlingInputRowIterator.InputRowHandler secondHandler
-    )
-    {
-      CloseableIterator<InputRow> iterator = CloseableIterators.withEmptyBaggage(
-          new Iterator<InputRow>()
-          {
-            private final Iterator<InputRow> delegate = INPUT_ROWS.iterator();
+		@Test
+		public void yieldsNullIfHandledByFirst() {
+			HandlingInputRowIterator target = createInputRowIterator(successfulHandler, unsuccessfulHandler);
+			Assert.assertNull(target.next());
+			Mockito.verify(successfulHandler, Mockito.atLeastOnce()).handle(Mockito.any(InputRow.class));
+			Mockito.verify(unsuccessfulHandler, Mockito.never()).handle(Mockito.any(InputRow.class));
+		}
 
-            @Override
-            public boolean hasNext()
-            {
-              return delegate.hasNext();
-            }
+		@Test
+		public void yieldsNullIfHandledBySecond() {
+			HandlingInputRowIterator target = createInputRowIterator(unsuccessfulHandler, successfulHandler);
+			Assert.assertNull(target.next());
+			Mockito.verify(unsuccessfulHandler, Mockito.atLeastOnce()).handle(Mockito.any(InputRow.class));
+			Mockito.verify(successfulHandler, Mockito.atLeastOnce()).handle(Mockito.any(InputRow.class));
+		}
 
-            @Nullable
-            @Override
-            public InputRow next()
-            {
-              return delegate.next();
-            }
-          }
-      );
+		private static HandlingInputRowIterator createInputRowIterator(
+				HandlingInputRowIterator.InputRowHandler firstHandler,
+				HandlingInputRowIterator.InputRowHandler secondHandler) {
+			CloseableIterator<InputRow> iterator = CloseableIterators.withEmptyBaggage(new Iterator<InputRow>() {
+				private final Iterator<InputRow> delegate = INPUT_ROWS.iterator();
 
-      return new HandlingInputRowIterator(iterator, Arrays.asList(firstHandler, secondHandler));
-    }
+				@Override
+				public boolean hasNext() {
+					return delegate.hasNext();
+				}
 
-    private static class TestInputRowHandler implements HandlingInputRowIterator.InputRowHandler
-    {
-      boolean invoked = false;
+				@Nullable
+				@Override
+				public InputRow next() {
+					return delegate.next();
+				}
+			});
 
-      private final boolean successful;
-
-      TestInputRowHandler(boolean successful)
-      {
-        this.successful = successful;
-      }
-
-      @Override
-      public boolean handle(InputRow inputRow)
-      {
-        invoked = true;
-        return successful;
-      }
-    }
-  }
+			return new HandlingInputRowIterator(iterator, Arrays.asList(firstHandler, secondHandler));
+		}
+	}
 }

@@ -72,8 +72,8 @@ public class KillUnusedSegmentsTest {
 		IndexingServiceClient indexingServiceClient = EasyMock.createMock(IndexingServiceClient.class);
 
 		KillUnusedSegments unusedSegmentsKiller = new KillUnusedSegments(segmentsMetadataManager, indexingServiceClient,
-				new TestDruidCoordinatorConfig(null, null, Duration.parse("PT76400S"), new Duration(1),
-						Duration.parse("PT86400S"), Duration.parse("PT86400S"), 1000, Duration.ZERO));
+				TestDruidCoordinatorConfig.mockDruidCoordinatorConfig1(null, null, Duration.parse("PT76400S"),
+						new Duration(1), Duration.parse("PT86400S"), Duration.parse("PT86400S"), 1000, Duration.ZERO));
 
 		Assert.assertEquals(expected, unusedSegmentsKiller.findIntervalForKill("test", 10000));
 	}

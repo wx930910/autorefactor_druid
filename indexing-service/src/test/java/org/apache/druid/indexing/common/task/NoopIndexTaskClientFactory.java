@@ -19,21 +19,22 @@
 
 package org.apache.druid.indexing.common.task;
 
-import org.apache.druid.indexing.common.IndexTaskClient;
 import org.apache.druid.indexing.common.TaskInfoProvider;
+import org.apache.druid.indexing.common.task.batch.parallel.ParallelIndexSupervisorTaskClient;
 import org.joda.time.Duration;
+import org.mockito.Mockito;
 
-public class NoopIndexTaskClientFactory<T extends IndexTaskClient> implements IndexTaskClientFactory<T>
-{
-  @Override
-  public T build(
-      TaskInfoProvider taskInfoProvider,
-      String callerId,
-      int numThreads,
-      Duration httpTimeout,
-      long numRetries
-  )
-  {
-    throw new UnsupportedOperationException();
-  }
+public class NoopIndexTaskClientFactory {
+	static public IndexTaskClientFactory<ParallelIndexSupervisorTaskClient> mockIndexTaskClientFactory1() {
+		IndexTaskClientFactory<ParallelIndexSupervisorTaskClient> mockInstance = Mockito
+				.spy(IndexTaskClientFactory.class);
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				throw new UnsupportedOperationException();
+			}).when(mockInstance).build(Mockito.any(TaskInfoProvider.class), Mockito.any(String.class),
+					Mockito.anyInt(), Mockito.any(Duration.class), Mockito.anyLong());
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 }

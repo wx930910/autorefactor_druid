@@ -19,8 +19,11 @@
 
 package org.apache.druid.curator.inventory;
 
-import com.google.common.collect.Iterables;
-import com.google.common.primitives.Ints;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.api.CuratorEvent;
 import org.apache.curator.framework.api.CuratorEventType;
@@ -33,242 +36,187 @@ import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 
-import java.util.Map;
-import java.util.TreeMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
+import com.google.common.collect.Iterables;
+import com.google.common.primitives.Ints;
 
 /**
  */
-public class CuratorInventoryManagerTest extends CuratorTestBase
-{
-  private ExecutorService exec;
+public class CuratorInventoryManagerTest extends CuratorTestBase {
+	static public InventoryManagerConfig mockInventoryManagerConfig1(String containerPath, String inventoryPath) {
+		String[] mockFieldVariableInventoryPath = new String[1];
+		String[] mockFieldVariableContainerPath = new String[1];
+		InventoryManagerConfig mockInstance = Mockito.spy(InventoryManagerConfig.class);
+		mockFieldVariableContainerPath[0] = containerPath;
+		mockFieldVariableInventoryPath[0] = inventoryPath;
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableInventoryPath[0];
+			}).when(mockInstance).getInventoryPath();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableContainerPath[0];
+			}).when(mockInstance).getContainerPath();
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 
-  @Before
-  public void setUp() throws Exception
-  {
-    setupServerAndCurator();
-    exec = Execs.singleThreaded("curator-inventory-manager-test-%s");
-  }
+	private ExecutorService exec;
 
-  @After
-  public void tearDown()
-  {
-    tearDownServerAndCurator();
-  }
+	@Before
+	public void setUp() throws Exception {
+		setupServerAndCurator();
+		exec = Execs.singleThreaded("curator-inventory-manager-test-%s");
+	}
 
-  @Test
-  public void testSanity() throws Exception
-  {
-    final MapStrategy strategy = new MapStrategy();
-    CuratorInventoryManager<Map<String, Integer>, Integer> manager = new CuratorInventoryManager<>(
-        curator,
-        new StringInventoryManagerConfig("/container", "/inventory"),
-        exec,
-        strategy
-    );
+	@After
+	public void tearDown() {
+		tearDownServerAndCurator();
+	}
 
-    curator.start();
-    curator.blockUntilConnected();
+	@Test
+	public void testSanity() throws Exception {
+		final CuratorInventoryManagerStrategy<Map<String, Integer>, Integer> strategy = Mockito
+				.spy(CuratorInventoryManagerStrategy.class);
+		CountDownLatch[] strategyNewContainerLatch = new CountDownLatch[] { null };
+		CountDownLatch[] strategyDeadContainerLatch = new CountDownLatch[] { null };
+		CountDownLatch[] strategyNewInventoryLatch = new CountDownLatch[] { null };
+		CountDownLatch[] strategyDeadInventoryLatch = new CountDownLatch[] { null };
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				return new TreeMap<>();
+			}).when(strategy).deserializeContainer(Mockito.any(byte[].class));
+			Mockito.doAnswer((stubInvo) -> {
+				if (strategyNewContainerLatch[0] != null) {
+					strategyNewContainerLatch[0].countDown();
+				}
+				return null;
+			}).when(strategy).newContainer(Mockito.any(Map.class));
+			Mockito.doAnswer((stubInvo) -> {
+				Map<String, Integer> oldContainer = stubInvo.getArgument(0);
+				Map<String, Integer> newContainer = stubInvo.getArgument(1);
+				newContainer.putAll(oldContainer);
+				return newContainer;
+			}).when(strategy).updateContainer(Mockito.any(Map.class), Mockito.any(Map.class));
+			Mockito.doAnswer((stubInvo) -> {
+				if (strategyDeadContainerLatch[0] != null) {
+					strategyDeadContainerLatch[0].countDown();
+				}
+				return null;
+			}).when(strategy).deadContainer(Mockito.any(Map.class));
+			Mockito.doAnswer((stubInvo) -> {
+				return null;
+			}).when(strategy).inventoryInitialized();
+			Mockito.doAnswer((stubInvo) -> {
+				Map<String, Integer> container = stubInvo.getArgument(0);
+				String inventoryKey = stubInvo.getArgument(1);
+				Integer inventoryMockVariable = stubInvo.getArgument(2);
+				container.put(inventoryKey, inventoryMockVariable);
+				if (strategyNewInventoryLatch[0] != null) {
+					strategyNewInventoryLatch[0].countDown();
+				}
+				return container;
+			}).when(strategy).addInventory(Mockito.any(Map.class), Mockito.any(String.class),
+					Mockito.any(Integer.class));
+			Mockito.doAnswer((stubInvo) -> {
+				Map<String, Integer> container = stubInvo.getArgument(0);
+				String inventoryKey = stubInvo.getArgument(1);
+				Integer inventoryMockVariable = stubInvo.getArgument(2);
+				return strategy.addInventory(container, inventoryKey, inventoryMockVariable);
+			}).when(strategy).updateInventory(Mockito.any(Map.class), Mockito.any(String.class),
+					Mockito.any(Integer.class));
+			Mockito.doAnswer((stubInvo) -> {
+				byte[] bytes = stubInvo.getArgument(0);
+				return (Integer) Ints.fromByteArray(bytes);
+			}).when(strategy).deserializeInventory(Mockito.any(byte[].class));
+			Mockito.doAnswer((stubInvo) -> {
+				Map<String, Integer> container = stubInvo.getArgument(0);
+				String inventoryKey = stubInvo.getArgument(1);
+				container.remove(inventoryKey);
+				if (strategyDeadInventoryLatch[0] != null) {
+					strategyDeadInventoryLatch[0].countDown();
+				}
+				return container;
+			}).when(strategy).removeInventory(Mockito.any(Map.class), Mockito.any(String.class));
+		} catch (Exception exception) {
+		}
+		CuratorInventoryManager<Map<String, Integer>, Integer> manager = new CuratorInventoryManager<>(curator,
+				CuratorInventoryManagerTest.mockInventoryManagerConfig1("/container", "/inventory"), exec, strategy);
 
-    manager.start();
+		curator.start();
+		curator.blockUntilConnected();
 
-    Assert.assertTrue(Iterables.isEmpty(manager.getInventory()));
+		manager.start();
 
-    CountDownLatch containerLatch = new CountDownLatch(1);
-    strategy.setNewContainerLatch(containerLatch);
-    curator.create().creatingParentsIfNeeded().withMode(CreateMode.EPHEMERAL).forPath("/container/billy", new byte[]{});
+		Assert.assertTrue(Iterables.isEmpty(manager.getInventory()));
 
-    Assert.assertTrue(timing.awaitLatch(containerLatch));
-    strategy.setNewContainerLatch(null);
+		CountDownLatch containerLatch = new CountDownLatch(1);
+		strategyNewContainerLatch[0] = containerLatch;
+		curator.create().creatingParentsIfNeeded().withMode(CreateMode.EPHEMERAL).forPath("/container/billy",
+				new byte[] {});
 
-    final Iterable<Map<String, Integer>> inventory = manager.getInventory();
-    Assert.assertTrue(Iterables.getOnlyElement(inventory).isEmpty());
+		Assert.assertTrue(timing.awaitLatch(containerLatch));
+		strategyNewContainerLatch[0] = null;
 
-    CountDownLatch inventoryLatch = new CountDownLatch(2);
-    strategy.setNewInventoryLatch(inventoryLatch);
-    curator.create().creatingParentsIfNeeded().withMode(CreateMode.EPHEMERAL).forPath("/inventory/billy/1", Ints.toByteArray(100));
-    curator.create().withMode(CreateMode.EPHEMERAL).forPath("/inventory/billy/bob", Ints.toByteArray(2287));
+		final Iterable<Map<String, Integer>> inventory = manager.getInventory();
+		Assert.assertTrue(Iterables.getOnlyElement(inventory).isEmpty());
 
-    Assert.assertTrue(timing.awaitLatch(inventoryLatch));
-    strategy.setNewInventoryLatch(null);
+		CountDownLatch inventoryLatch = new CountDownLatch(2);
+		strategyNewInventoryLatch[0] = inventoryLatch;
+		curator.create().creatingParentsIfNeeded().withMode(CreateMode.EPHEMERAL).forPath("/inventory/billy/1",
+				Ints.toByteArray(100));
+		curator.create().withMode(CreateMode.EPHEMERAL).forPath("/inventory/billy/bob", Ints.toByteArray(2287));
 
-    verifyInventory(manager);
+		Assert.assertTrue(timing.awaitLatch(inventoryLatch));
+		strategyNewInventoryLatch[0] = null;
 
-    CountDownLatch deleteLatch = new CountDownLatch(1);
-    strategy.setDeadInventoryLatch(deleteLatch);
-    curator.delete().forPath("/inventory/billy/1");
+		verifyInventory(manager);
 
-    Assert.assertTrue(timing.awaitLatch(deleteLatch));
-    strategy.setDeadInventoryLatch(null);
+		CountDownLatch deleteLatch = new CountDownLatch(1);
+		strategyDeadInventoryLatch[0] = deleteLatch;
+		curator.delete().forPath("/inventory/billy/1");
 
-    Assert.assertEquals(1, manager.getInventoryValue("billy").size());
-    Assert.assertEquals(2287, manager.getInventoryValue("billy").get("bob").intValue());
+		Assert.assertTrue(timing.awaitLatch(deleteLatch));
+		strategyDeadInventoryLatch[0] = null;
 
-    inventoryLatch = new CountDownLatch(1);
-    strategy.setNewInventoryLatch(inventoryLatch);
-    curator.create().withMode(CreateMode.EPHEMERAL).forPath("/inventory/billy/1", Ints.toByteArray(100));
+		Assert.assertEquals(1, manager.getInventoryValue("billy").size());
+		Assert.assertEquals(2287, manager.getInventoryValue("billy").get("bob").intValue());
 
-    Assert.assertTrue(timing.awaitLatch(inventoryLatch));
-    strategy.setNewInventoryLatch(null);
+		inventoryLatch = new CountDownLatch(1);
+		strategyNewInventoryLatch[0] = inventoryLatch;
+		curator.create().withMode(CreateMode.EPHEMERAL).forPath("/inventory/billy/1", Ints.toByteArray(100));
 
-    verifyInventory(manager);
+		Assert.assertTrue(timing.awaitLatch(inventoryLatch));
+		strategyNewInventoryLatch[0] = null;
 
-    final CountDownLatch latch = new CountDownLatch(1);
-    curator.getCuratorListenable().addListener(
-        new CuratorListener() {
-          @Override
-          public void eventReceived(CuratorFramework client, CuratorEvent event)
-          {
-            if (event.getType() == CuratorEventType.WATCHED
-                && event.getWatchedEvent().getState() == Watcher.Event.KeeperState.Disconnected) {
-              latch.countDown();
-            }
-          }
-        }
-    );
+		verifyInventory(manager);
 
-    server.stop();
-    Assert.assertTrue(timing.awaitLatch(latch));
+		final CountDownLatch latch = new CountDownLatch(1);
+		curator.getCuratorListenable().addListener(new CuratorListener() {
+			@Override
+			public void eventReceived(CuratorFramework client, CuratorEvent event) {
+				if (event.getType() == CuratorEventType.WATCHED
+						&& event.getWatchedEvent().getState() == Watcher.Event.KeeperState.Disconnected) {
+					latch.countDown();
+				}
+			}
+		});
 
-    verifyInventory(manager);
+		server.stop();
+		Assert.assertTrue(timing.awaitLatch(latch));
 
-    Thread.sleep(50); // Wait a bit
+		verifyInventory(manager);
 
-    verifyInventory(manager);
-  }
+		Thread.sleep(50); // Wait a bit
 
-  private void verifyInventory(CuratorInventoryManager<Map<String, Integer>, Integer> manager)
-  {
-    final Map<String, Integer> vals = manager.getInventoryValue("billy");
-    Assert.assertEquals(2, vals.size());
-    Assert.assertEquals(100, vals.get("1").intValue());
-    Assert.assertEquals(2287, vals.get("bob").intValue());
-  }
+		verifyInventory(manager);
+	}
 
-  private static class StringInventoryManagerConfig implements InventoryManagerConfig
-  {
-    private final String containerPath;
-    private final String inventoryPath;
-
-    private StringInventoryManagerConfig(
-        String containerPath,
-        String inventoryPath
-    )
-    {
-      this.containerPath = containerPath;
-      this.inventoryPath = inventoryPath;
-    }
-
-    @Override
-    public String getContainerPath()
-    {
-      return containerPath;
-    }
-
-    @Override
-    public String getInventoryPath()
-    {
-      return inventoryPath;
-    }
-  }
-
-  private static class MapStrategy implements CuratorInventoryManagerStrategy<Map<String, Integer>, Integer>
-  {
-    private volatile CountDownLatch newContainerLatch = null;
-    private volatile CountDownLatch deadContainerLatch = null;
-    private volatile CountDownLatch newInventoryLatch = null;
-    private volatile CountDownLatch deadInventoryLatch = null;
-    private volatile boolean initialized = false;
-
-    @Override
-    public Map<String, Integer> deserializeContainer(byte[] bytes)
-    {
-      return new TreeMap<>();
-    }
-
-    @Override
-    public Integer deserializeInventory(byte[] bytes)
-    {
-      return Ints.fromByteArray(bytes);
-    }
-
-    @Override
-    public void newContainer(Map<String, Integer> newContainer)
-    {
-      if (newContainerLatch != null) {
-        newContainerLatch.countDown();
-      }
-    }
-
-    @Override
-    public void deadContainer(Map<String, Integer> deadContainer)
-    {
-      if (deadContainerLatch != null) {
-        deadContainerLatch.countDown();
-      }
-    }
-
-    @Override
-    public Map<String, Integer> updateContainer(Map<String, Integer> oldContainer, Map<String, Integer> newContainer)
-    {
-      newContainer.putAll(oldContainer);
-      return newContainer;
-    }
-
-    @Override
-    public Map<String, Integer> addInventory(Map<String, Integer> container, String inventoryKey, Integer inventory)
-    {
-      container.put(inventoryKey, inventory);
-      if (newInventoryLatch != null) {
-        newInventoryLatch.countDown();
-      }
-      return container;
-    }
-
-    @Override
-    public Map<String, Integer> updateInventory(
-        Map<String, Integer> container, String inventoryKey, Integer inventory
-    )
-    {
-      return addInventory(container, inventoryKey, inventory);
-    }
-
-    @Override
-    public Map<String, Integer> removeInventory(Map<String, Integer> container, String inventoryKey)
-    {
-      container.remove(inventoryKey);
-      if (deadInventoryLatch != null) {
-        deadInventoryLatch.countDown();
-      }
-      return container;
-    }
-
-    private void setNewContainerLatch(CountDownLatch newContainerLatch)
-    {
-      this.newContainerLatch = newContainerLatch;
-    }
-
-    private void setDeadContainerLatch(CountDownLatch deadContainerLatch)
-    {
-      this.deadContainerLatch = deadContainerLatch;
-    }
-
-    private void setNewInventoryLatch(CountDownLatch newInventoryLatch)
-    {
-      this.newInventoryLatch = newInventoryLatch;
-    }
-
-    private void setDeadInventoryLatch(CountDownLatch deadInventoryLatch)
-    {
-      this.deadInventoryLatch = deadInventoryLatch;
-    }
-
-    @Override
-    public void inventoryInitialized()
-    {
-      initialized = true;
-    }
-  }
+	private void verifyInventory(CuratorInventoryManager<Map<String, Integer>, Integer> manager) {
+		final Map<String, Integer> vals = manager.getInventoryValue("billy");
+		Assert.assertEquals(2, vals.size());
+		Assert.assertEquals(100, vals.get("1").intValue());
+		Assert.assertEquals(2287, vals.get("bob").intValue());
+	}
 }

@@ -22,10 +22,12 @@ package org.apache.druid.indexing.common.task;
 import org.apache.druid.indexing.common.task.batch.parallel.SupervisorTaskAccess;
 import org.mockito.Mockito;
 
-public class SupervisorTaskAccessWithNullClient extends SupervisorTaskAccess
-{
-  public SupervisorTaskAccessWithNullClient(String supervisorTaskId)
-  {
-    super(supervisorTaskId, null);
-  }
+public class SupervisorTaskAccessWithNullClient {
+	static public SupervisorTaskAccess mockSupervisorTaskAccess1(String supervisorTaskId) {
+		SupervisorTaskAccess mockInstance = Mockito.spy(new SupervisorTaskAccess(supervisorTaskId, null));
+		try {
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 }
