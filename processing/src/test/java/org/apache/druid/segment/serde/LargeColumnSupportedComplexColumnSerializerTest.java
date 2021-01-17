@@ -19,8 +19,11 @@
 
 package org.apache.druid.segment.serde;
 
-import com.google.common.hash.HashFunction;
-import com.google.common.hash.Hashing;
+import java.io.File;
+import java.io.IOException;
+
+import javax.annotation.Nullable;
+
 import org.apache.druid.hll.HyperLogLogCollector;
 import org.apache.druid.java.util.common.io.smoosh.FileSmoosher;
 import org.apache.druid.java.util.common.io.smoosh.Smoosh;
@@ -39,96 +42,80 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import javax.annotation.Nullable;
-import java.io.File;
-import java.io.IOException;
+import com.google.common.hash.HashFunction;
+import com.google.common.hash.Hashing;
 
-public class LargeColumnSupportedComplexColumnSerializerTest
-{
+public class LargeColumnSupportedComplexColumnSerializerTest {
 
-  private final HashFunction fn = Hashing.murmur3_128();
+	private final HashFunction fn = Hashing.murmur3_128();
 
-  @Rule
-  public TemporaryFolder temporaryFolder = new TemporaryFolder();
+	@Rule
+	public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-  @Test
-  public void testSanity() throws IOException
-  {
+	@Test
+	public void testSanity() throws IOException {
 
-    HyperUniquesSerdeForTest serde = new HyperUniquesSerdeForTest(Hashing.murmur3_128());
-    int[] cases = {1000, 5000, 10000, 20000};
-    int[] columnSizes = {
-        Integer.MAX_VALUE,
-        Integer.MAX_VALUE / 2,
-        Integer.MAX_VALUE / 4,
-        5000 * Long.BYTES,
-        2500 * Long.BYTES
-    };
+		ComplexMetricSerde serde = HyperUniquesSerdeForTest.mockComplexMetricSerde1(Hashing.murmur3_128());
+		int[] cases = { 1000, 5000, 10000, 20000 };
+		int[] columnSizes = { Integer.MAX_VALUE, Integer.MAX_VALUE / 2, Integer.MAX_VALUE / 4, 5000 * Long.BYTES,
+				2500 * Long.BYTES };
 
-    for (int columnSize : columnSizes) {
-      for (int aCase : cases) {
-        File tmpFile = temporaryFolder.newFolder();
-        HyperLogLogCollector baseCollector = HyperLogLogCollector.makeLatestCollector();
-        try (SegmentWriteOutMedium segmentWriteOutMedium = new OffHeapMemorySegmentWriteOutMedium();
-             FileSmoosher v9Smoosher = new FileSmoosher(tmpFile)) {
+		for (int columnSize : columnSizes) {
+			for (int aCase : cases) {
+				File tmpFile = temporaryFolder.newFolder();
+				HyperLogLogCollector baseCollector = HyperLogLogCollector.makeLatestCollector();
+				try (SegmentWriteOutMedium segmentWriteOutMedium = new OffHeapMemorySegmentWriteOutMedium();
+						FileSmoosher v9Smoosher = new FileSmoosher(tmpFile)) {
 
-          LargeColumnSupportedComplexColumnSerializer serializer = LargeColumnSupportedComplexColumnSerializer
-              .createWithColumnSize(segmentWriteOutMedium, "test", serde.getObjectStrategy(), columnSize);
+					LargeColumnSupportedComplexColumnSerializer serializer = LargeColumnSupportedComplexColumnSerializer
+							.createWithColumnSize(segmentWriteOutMedium, "test", serde.getObjectStrategy(), columnSize);
 
-          serializer.open();
-          for (int i = 0; i < aCase; i++) {
-            HyperLogLogCollector collector = HyperLogLogCollector.makeLatestCollector();
-            byte[] hashBytes = fn.hashLong(i).asBytes();
-            collector.add(hashBytes);
-            baseCollector.fold(collector);
-            serializer.serialize(new ObjectColumnSelector()
-            {
-              @Nullable
-              @Override
-              public Object getObject()
-              {
-                return collector;
-              }
+					serializer.open();
+					for (int i = 0; i < aCase; i++) {
+						HyperLogLogCollector collector = HyperLogLogCollector.makeLatestCollector();
+						byte[] hashBytes = fn.hashLong(i).asBytes();
+						collector.add(hashBytes);
+						baseCollector.fold(collector);
+						serializer.serialize(new ObjectColumnSelector() {
+							@Nullable
+							@Override
+							public Object getObject() {
+								return collector;
+							}
 
-              @Override
-              public Class classOfObject()
-              {
-                return HyperLogLogCollector.class;
-              }
+							@Override
+							public Class classOfObject() {
+								return HyperLogLogCollector.class;
+							}
 
-              @Override
-              public void inspectRuntimeShape(RuntimeShapeInspector inspector)
-              {
-                // doesn't matter in tests
-              }
-            });
-          }
+							@Override
+							public void inspectRuntimeShape(RuntimeShapeInspector inspector) {
+								// doesn't matter in tests
+							}
+						});
+					}
 
-          try (final SmooshedWriter channel = v9Smoosher.addWithSmooshedWriter(
-              "test",
-              serializer.getSerializedSize()
-          )) {
-            serializer.writeTo(channel, v9Smoosher);
-          }
-        }
+					try (final SmooshedWriter channel = v9Smoosher.addWithSmooshedWriter("test",
+							serializer.getSerializedSize())) {
+						serializer.writeTo(channel, v9Smoosher);
+					}
+				}
 
-        SmooshedFileMapper mapper = Smoosh.map(tmpFile);
-        final ColumnBuilder builder = new ColumnBuilder()
-            .setType(ValueType.COMPLEX)
-            .setHasMultipleValues(false)
-            .setFileMapper(mapper);
-        serde.deserializeColumn(mapper.mapFile("test"), builder);
+				SmooshedFileMapper mapper = Smoosh.map(tmpFile);
+				final ColumnBuilder builder = new ColumnBuilder().setType(ValueType.COMPLEX).setHasMultipleValues(false)
+						.setFileMapper(mapper);
+				serde.deserializeColumn(mapper.mapFile("test"), builder);
 
-        ColumnHolder columnHolder = builder.build();
-        ComplexColumn complexColumn = (ComplexColumn) columnHolder.getColumn();
-        HyperLogLogCollector collector = HyperLogLogCollector.makeLatestCollector();
+				ColumnHolder columnHolder = builder.build();
+				ComplexColumn complexColumn = (ComplexColumn) columnHolder.getColumn();
+				HyperLogLogCollector collector = HyperLogLogCollector.makeLatestCollector();
 
-        for (int i = 0; i < aCase; i++) {
-          collector.fold((HyperLogLogCollector) complexColumn.getRowValue(i));
-        }
-        Assert.assertEquals(baseCollector.estimateCardinality(), collector.estimateCardinality(), 0.0);
-      }
-    }
-  }
+				for (int i = 0; i < aCase; i++) {
+					collector.fold((HyperLogLogCollector) complexColumn.getRowValue(i));
+				}
+				Assert.assertEquals(baseCollector.estimateCardinality(), collector.estimateCardinality(), 0.0);
+			}
+		}
+	}
 
 }

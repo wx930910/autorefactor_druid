@@ -19,8 +19,14 @@
 
 package org.apache.druid.server.coordination;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableMap;
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ScheduledExecutorService;
+
 import org.apache.curator.utils.ZKPaths;
 import org.apache.druid.curator.CuratorTestBase;
 import org.apache.druid.guice.ServerTypeConfig;
@@ -44,190 +50,134 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ScheduledExecutorService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableMap;
 
 /**
  */
-public class ZkCoordinatorTest extends CuratorTestBase
-{
-  private static final Logger log = new Logger(ZkCoordinatorTest.class);
+public class ZkCoordinatorTest extends CuratorTestBase {
+	private static final Logger log = new Logger(ZkCoordinatorTest.class);
 
-  private final ObjectMapper jsonMapper = ServerTestHelper.MAPPER;
-  private final DruidServerMetadata me = new DruidServerMetadata(
-      "dummyServer",
-      "dummyHost",
-      null,
-      0,
-      ServerType.HISTORICAL,
-      "normal",
-      0
-  );
-  private final ZkPathsConfig zkPaths = new ZkPathsConfig()
-  {
-    @Override
-    public String getBase()
-    {
-      return "/druid";
-    }
-  };
-  private ZkCoordinator zkCoordinator;
+	private final ObjectMapper jsonMapper = ServerTestHelper.MAPPER;
+	private final DruidServerMetadata me = new DruidServerMetadata("dummyServer", "dummyHost", null, 0,
+			ServerType.HISTORICAL, "normal", 0);
+	private final ZkPathsConfig zkPaths = new ZkPathsConfig() {
+		@Override
+		public String getBase() {
+			return "/druid";
+		}
+	};
+	private ZkCoordinator zkCoordinator;
 
-  private File infoDir;
-  private List<StorageLocationConfig> locations;
+	private File infoDir;
+	private List<StorageLocationConfig> locations;
 
-  @Rule
-  public TemporaryFolder temporaryFolder = new TemporaryFolder();
+	@Rule
+	public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-  @Before
-  public void setUp() throws Exception
-  {
-    try {
-      infoDir = temporaryFolder.newFolder();
-      log.info("Creating tmp test files in [%s]", infoDir);
-    }
-    catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+	@Before
+	public void setUp() throws Exception {
+		try {
+			infoDir = temporaryFolder.newFolder();
+			log.info("Creating tmp test files in [%s]", infoDir);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
 
-    locations = Collections.singletonList(
-        new StorageLocationConfig(
-            infoDir,
-            100L,
-            100d
-        )
-    );
+		locations = Collections.singletonList(new StorageLocationConfig(infoDir, 100L, 100d));
 
-    setupServerAndCurator();
-    curator.start();
-    curator.blockUntilConnected();
-  }
+		setupServerAndCurator();
+		curator.start();
+		curator.blockUntilConnected();
+	}
 
-  @After
-  public void tearDown()
-  {
-    tearDownServerAndCurator();
-  }
+	@After
+	public void tearDown() {
+		tearDownServerAndCurator();
+	}
 
-  @Test(timeout = 60_000L)
-  public void testLoadDrop() throws Exception
-  {
-    EmittingLogger.registerEmitter(new NoopServiceEmitter());
-    DataSegment segment = new DataSegment(
-        "test",
-        Intervals.of("P1d/2011-04-02"),
-        "v0",
-        ImmutableMap.of("version", "v0", "interval", Intervals.of("P1d/2011-04-02"), "cacheDir", "/no"),
-        Arrays.asList("dim1", "dim2", "dim3"),
-        Arrays.asList("metric1", "metric2"),
-        NoneShardSpec.instance(),
-        IndexIO.CURRENT_VERSION_ID,
-        123L
-    );
+	@Test(timeout = 60_000L)
+	public void testLoadDrop() throws Exception {
+		EmittingLogger.registerEmitter(NoopServiceEmitter.mockServiceEmitter1());
+		DataSegment segment = new DataSegment("test", Intervals.of("P1d/2011-04-02"), "v0",
+				ImmutableMap.of("version", "v0", "interval", Intervals.of("P1d/2011-04-02"), "cacheDir", "/no"),
+				Arrays.asList("dim1", "dim2", "dim3"), Arrays.asList("metric1", "metric2"), NoneShardSpec.instance(),
+				IndexIO.CURRENT_VERSION_ID, 123L);
 
-    CountDownLatch loadLatch = new CountDownLatch(1);
-    CountDownLatch dropLatch = new CountDownLatch(1);
+		CountDownLatch loadLatch = new CountDownLatch(1);
+		CountDownLatch dropLatch = new CountDownLatch(1);
 
-    SegmentLoadDropHandler segmentLoadDropHandler = new SegmentLoadDropHandler(
-        ServerTestHelper.MAPPER,
-        new SegmentLoaderConfig() {
-          @Override
-          public File getInfoDir()
-          {
-            return infoDir;
-          }
+		SegmentLoadDropHandler segmentLoadDropHandler = new SegmentLoadDropHandler(ServerTestHelper.MAPPER,
+				new SegmentLoaderConfig() {
+					@Override
+					public File getInfoDir() {
+						return infoDir;
+					}
 
-          @Override
-          public int getNumLoadingThreads()
-          {
-            return 5;
-          }
+					@Override
+					public int getNumLoadingThreads() {
+						return 5;
+					}
 
-          @Override
-          public int getAnnounceIntervalMillis()
-          {
-            return 50;
-          }
+					@Override
+					public int getAnnounceIntervalMillis() {
+						return 50;
+					}
 
-          @Override
-          public List<StorageLocationConfig> getLocations()
-          {
-            return locations;
-          }
+					@Override
+					public List<StorageLocationConfig> getLocations() {
+						return locations;
+					}
 
-          @Override
-          public int getDropSegmentDelayMillis()
-          {
-            return 0;
-          }
-        },
-        EasyMock.createNiceMock(DataSegmentAnnouncer.class),
-        EasyMock.createNiceMock(DataSegmentServerAnnouncer.class),
-        EasyMock.createNiceMock(SegmentManager.class),
-        EasyMock.createNiceMock(ScheduledExecutorService.class),
-        new ServerTypeConfig(ServerType.HISTORICAL)
-    )
-    {
-      @Override
-      public void addSegment(DataSegment s, DataSegmentChangeCallback callback)
-      {
-        if (segment.getId().equals(s.getId())) {
-          loadLatch.countDown();
-          callback.execute();
-        }
-      }
+					@Override
+					public int getDropSegmentDelayMillis() {
+						return 0;
+					}
+				}, EasyMock.createNiceMock(DataSegmentAnnouncer.class),
+				EasyMock.createNiceMock(DataSegmentServerAnnouncer.class),
+				EasyMock.createNiceMock(SegmentManager.class), EasyMock.createNiceMock(ScheduledExecutorService.class),
+				new ServerTypeConfig(ServerType.HISTORICAL)) {
+			@Override
+			public void addSegment(DataSegment s, DataSegmentChangeCallback callback) {
+				if (segment.getId().equals(s.getId())) {
+					loadLatch.countDown();
+					callback.execute();
+				}
+			}
 
-      @Override
-      public void removeSegment(DataSegment s, DataSegmentChangeCallback callback)
-      {
-        if (segment.getId().equals(s.getId())) {
-          dropLatch.countDown();
-          callback.execute();
-        }
-      }
-    };
+			@Override
+			public void removeSegment(DataSegment s, DataSegmentChangeCallback callback) {
+				if (segment.getId().equals(s.getId())) {
+					dropLatch.countDown();
+					callback.execute();
+				}
+			}
+		};
 
-    zkCoordinator = new ZkCoordinator(
-        segmentLoadDropHandler,
-        jsonMapper,
-        zkPaths,
-        me,
-        curator,
-        new SegmentLoaderConfig()
-    );
-    zkCoordinator.start();
+		zkCoordinator = new ZkCoordinator(segmentLoadDropHandler, jsonMapper, zkPaths, me, curator,
+				new SegmentLoaderConfig());
+		zkCoordinator.start();
 
-    String segmentZkPath = ZKPaths.makePath(zkPaths.getLoadQueuePath(), me.getName(), segment.getId().toString());
+		String segmentZkPath = ZKPaths.makePath(zkPaths.getLoadQueuePath(), me.getName(), segment.getId().toString());
 
-    curator
-        .create()
-        .creatingParentsIfNeeded()
-        .withMode(CreateMode.EPHEMERAL)
-        .forPath(segmentZkPath, jsonMapper.writeValueAsBytes(new SegmentChangeRequestLoad(segment)));
+		curator.create().creatingParentsIfNeeded().withMode(CreateMode.EPHEMERAL).forPath(segmentZkPath,
+				jsonMapper.writeValueAsBytes(new SegmentChangeRequestLoad(segment)));
 
-    loadLatch.await();
+		loadLatch.await();
 
-    while (curator.checkExists().forPath(segmentZkPath) != null) {
-      Thread.sleep(100);
-    }
+		while (curator.checkExists().forPath(segmentZkPath) != null) {
+			Thread.sleep(100);
+		}
 
-    curator
-        .create()
-        .creatingParentsIfNeeded()
-        .withMode(CreateMode.EPHEMERAL)
-        .forPath(segmentZkPath, jsonMapper.writeValueAsBytes(new SegmentChangeRequestDrop(segment)));
+		curator.create().creatingParentsIfNeeded().withMode(CreateMode.EPHEMERAL).forPath(segmentZkPath,
+				jsonMapper.writeValueAsBytes(new SegmentChangeRequestDrop(segment)));
 
-    dropLatch.await();
+		dropLatch.await();
 
-    while (curator.checkExists().forPath(segmentZkPath) != null) {
-      Thread.sleep(100);
-    }
+		while (curator.checkExists().forPath(segmentZkPath) != null) {
+			Thread.sleep(100);
+		}
 
-    zkCoordinator.stop();
-  }
+		zkCoordinator.stop();
+	}
 }

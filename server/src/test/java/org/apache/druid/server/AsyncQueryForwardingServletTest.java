@@ -19,16 +19,21 @@
 
 package org.apache.druid.server;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.net.HostAndPort;
-import com.google.inject.Binder;
-import com.google.inject.Inject;
-import com.google.inject.Injector;
-import com.google.inject.Key;
-import com.google.inject.Module;
-import com.google.inject.servlet.GuiceFilter;
+import java.io.ByteArrayInputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
+import java.util.Collection;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.zip.Deflater;
+
+import javax.servlet.ReadListener;
+import javax.servlet.ServletInputStream;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
 import org.apache.druid.common.utils.SocketUtil;
 import org.apache.druid.guice.GuiceInjectors;
 import org.apache.druid.guice.Jerseys;
@@ -72,392 +77,304 @@ import org.eclipse.jetty.servlet.ServletHolder;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 
-import javax.servlet.ReadListener;
-import javax.servlet.ServletInputStream;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import java.io.ByteArrayInputStream;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.net.URL;
-import java.util.Collection;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.zip.Deflater;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
+import com.google.inject.Binder;
+import com.google.inject.Inject;
+import com.google.inject.Injector;
+import com.google.inject.Key;
+import com.google.inject.Module;
+import com.google.inject.servlet.GuiceFilter;
 
-public class AsyncQueryForwardingServletTest extends BaseJettyTest
-{
-  private static int port1;
-  private static int port2;
+public class AsyncQueryForwardingServletTest extends BaseJettyTest {
+	static public org.apache.druid.client.selector.Server mockServer1(String scheme, String address, int port) {
+		String[] mockFieldVariableAddress = new String[1];
+		String[] mockFieldVariableScheme = new String[1];
+		int[] mockFieldVariablePort = new int[1];
+		org.apache.druid.client.selector.Server mockInstance = Mockito
+				.spy(org.apache.druid.client.selector.Server.class);
+		mockFieldVariableScheme[0] = scheme;
+		mockFieldVariableAddress[0] = address;
+		mockFieldVariablePort[0] = port;
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableAddress[0] + ":" + mockFieldVariablePort[0];
+			}).when(mockInstance).getHost();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariablePort[0];
+			}).when(mockInstance).getPort();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableScheme[0];
+			}).when(mockInstance).getScheme();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableAddress[0];
+			}).when(mockInstance).getAddress();
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 
-  @Override
-  @Before
-  public void setup() throws Exception
-  {
-    setProperties();
-    Injector injector = setupInjector();
-    final DruidNode node = injector.getInstance(Key.get(DruidNode.class, Self.class));
-    port = node.getPlaintextPort();
-    port1 = SocketUtil.findOpenPortFrom(port + 1);
-    port2 = SocketUtil.findOpenPortFrom(port1 + 1);
+	private static int port1;
+	private static int port2;
 
-    lifecycle = injector.getInstance(Lifecycle.class);
-    lifecycle.start();
-    ClientHolder holder = injector.getInstance(ClientHolder.class);
-    client = holder.getClient();
-  }
+	@Override
+	@Before
+	public void setup() throws Exception {
+		setProperties();
+		Injector injector = setupInjector();
+		final DruidNode node = injector.getInstance(Key.get(DruidNode.class, Self.class));
+		port = node.getPlaintextPort();
+		port1 = SocketUtil.findOpenPortFrom(port + 1);
+		port2 = SocketUtil.findOpenPortFrom(port1 + 1);
 
-  @Override
-  protected Injector setupInjector()
-  {
-    return Initialization.makeInjectorWithModules(
-        GuiceInjectors.makeStartupInjector(), ImmutableList.<Module>of(
-            new Module()
-            {
-              @Override
-              public void configure(Binder binder)
-              {
-                JsonConfigProvider.bindInstance(
-                    binder,
-                    Key.get(DruidNode.class, Self.class),
-                    new DruidNode("test", "localhost", false, null, null, true, false)
-                );
-                binder.bind(JettyServerInitializer.class).to(ProxyJettyServerInit.class).in(LazySingleton.class);
-                binder.bind(AuthorizerMapper.class).toInstance(
-                    new AuthorizerMapper(null)
-                    {
+		lifecycle = injector.getInstance(Lifecycle.class);
+		lifecycle.start();
+		ClientHolder holder = injector.getInstance(ClientHolder.class);
+		client = holder.getClient();
+	}
 
-                      @Override
-                      public Authorizer getAuthorizer(String name)
-                      {
-                        return new AllowAllAuthorizer();
-                      }
-                    }
-                );
-                Jerseys.addResource(binder, SlowResource.class);
-                Jerseys.addResource(binder, ExceptionResource.class);
-                Jerseys.addResource(binder, DefaultResource.class);
-                LifecycleModule.register(binder, Server.class);
-              }
-            }
-        )
-    );
-  }
+	@Override
+	protected Injector setupInjector() {
+		return Initialization.makeInjectorWithModules(GuiceInjectors.makeStartupInjector(),
+				ImmutableList.<Module>of(new Module() {
+					@Override
+					public void configure(Binder binder) {
+						JsonConfigProvider.bindInstance(binder, Key.get(DruidNode.class, Self.class),
+								new DruidNode("test", "localhost", false, null, null, true, false));
+						binder.bind(JettyServerInitializer.class).to(ProxyJettyServerInit.class)
+								.in(LazySingleton.class);
+						binder.bind(AuthorizerMapper.class).toInstance(new AuthorizerMapper(null) {
 
-  @Test
-  public void testProxyGzipCompression() throws Exception
-  {
-    final URL url = new URL("http://localhost:" + port + "/proxy/default");
+							@Override
+							public Authorizer getAuthorizer(String name) {
+								return new AllowAllAuthorizer();
+							}
+						});
+						Jerseys.addResource(binder, SlowResource.class);
+						Jerseys.addResource(binder, ExceptionResource.class);
+						Jerseys.addResource(binder, DefaultResource.class);
+						LifecycleModule.register(binder, Server.class);
+					}
+				}));
+	}
 
-    final HttpURLConnection get = (HttpURLConnection) url.openConnection();
-    get.setRequestProperty("Accept-Encoding", "gzip");
-    Assert.assertEquals("gzip", get.getContentEncoding());
+	@Test
+	public void testProxyGzipCompression() throws Exception {
+		final URL url = new URL("http://localhost:" + port + "/proxy/default");
 
-    final HttpURLConnection post = (HttpURLConnection) url.openConnection();
-    post.setRequestProperty("Accept-Encoding", "gzip");
-    post.setRequestMethod("POST");
-    Assert.assertEquals("gzip", post.getContentEncoding());
+		final HttpURLConnection get = (HttpURLConnection) url.openConnection();
+		get.setRequestProperty("Accept-Encoding", "gzip");
+		Assert.assertEquals("gzip", get.getContentEncoding());
 
-    final HttpURLConnection getNoGzip = (HttpURLConnection) url.openConnection();
-    Assert.assertNotEquals("gzip", getNoGzip.getContentEncoding());
+		final HttpURLConnection post = (HttpURLConnection) url.openConnection();
+		post.setRequestProperty("Accept-Encoding", "gzip");
+		post.setRequestMethod("POST");
+		Assert.assertEquals("gzip", post.getContentEncoding());
 
-    final HttpURLConnection postNoGzip = (HttpURLConnection) url.openConnection();
-    postNoGzip.setRequestMethod("POST");
-    Assert.assertNotEquals("gzip", postNoGzip.getContentEncoding());
-  }
+		final HttpURLConnection getNoGzip = (HttpURLConnection) url.openConnection();
+		Assert.assertNotEquals("gzip", getNoGzip.getContentEncoding());
 
-  @Test(timeout = 60_000L)
-  public void testDeleteBroadcast() throws Exception
-  {
-    CountDownLatch latch = new CountDownLatch(2);
-    makeTestDeleteServer(port1, latch).start();
-    makeTestDeleteServer(port2, latch).start();
+		final HttpURLConnection postNoGzip = (HttpURLConnection) url.openConnection();
+		postNoGzip.setRequestMethod("POST");
+		Assert.assertNotEquals("gzip", postNoGzip.getContentEncoding());
+	}
 
-    final URL url = new URL("http://localhost:" + port + "/druid/v2/abc123");
-    final HttpURLConnection post = (HttpURLConnection) url.openConnection();
-    post.setRequestMethod("DELETE");
-    int code = post.getResponseCode();
-    Assert.assertEquals(200, code);
+	@Test(timeout = 60_000L)
+	public void testDeleteBroadcast() throws Exception {
+		CountDownLatch latch = new CountDownLatch(2);
+		makeTestDeleteServer(port1, latch).start();
+		makeTestDeleteServer(port2, latch).start();
 
-    latch.await();
-  }
+		final URL url = new URL("http://localhost:" + port + "/druid/v2/abc123");
+		final HttpURLConnection post = (HttpURLConnection) url.openConnection();
+		post.setRequestMethod("DELETE");
+		int code = post.getResponseCode();
+		Assert.assertEquals(200, code);
 
-  @Test
-  public void testQueryProxy() throws Exception
-  {
-    final ObjectMapper jsonMapper = TestHelper.makeJsonMapper();
-    final TimeseriesQuery query = Druids.newTimeseriesQueryBuilder()
-                                        .dataSource("foo")
-                                        .intervals("2000/P1D")
-                                        .granularity(Granularities.ALL)
-                                        .context(ImmutableMap.of("queryId", "dummy"))
-                                        .build();
+		latch.await();
+	}
 
-    final QueryHostFinder hostFinder = EasyMock.createMock(QueryHostFinder.class);
-    EasyMock.expect(hostFinder.pickServer(query)).andReturn(new TestServer("http", "1.2.3.4", 9999)).once();
-    EasyMock.replay(hostFinder);
+	@Test
+	public void testQueryProxy() throws Exception {
+		final ObjectMapper jsonMapper = TestHelper.makeJsonMapper();
+		final TimeseriesQuery query = Druids.newTimeseriesQueryBuilder().dataSource("foo").intervals("2000/P1D")
+				.granularity(Granularities.ALL).context(ImmutableMap.of("queryId", "dummy")).build();
 
-    final HttpServletRequest requestMock = EasyMock.createMock(HttpServletRequest.class);
-    final ByteArrayInputStream inputStream = new ByteArrayInputStream(jsonMapper.writeValueAsBytes(query));
-    final ServletInputStream servletInputStream = new ServletInputStream()
-    {
-      private boolean finished;
+		final QueryHostFinder hostFinder = EasyMock.createMock(QueryHostFinder.class);
+		EasyMock.expect(hostFinder.pickServer(query))
+				.andReturn(AsyncQueryForwardingServletTest.mockServer1("http", "1.2.3.4", 9999)).once();
+		EasyMock.replay(hostFinder);
 
-      @Override
-      public boolean isFinished()
-      {
-        return finished;
-      }
+		final HttpServletRequest requestMock = EasyMock.createMock(HttpServletRequest.class);
+		final ByteArrayInputStream inputStream = new ByteArrayInputStream(jsonMapper.writeValueAsBytes(query));
+		final ServletInputStream servletInputStream = new ServletInputStream() {
+			private boolean finished;
 
-      @Override
-      public boolean isReady()
-      {
-        return true;
-      }
+			@Override
+			public boolean isFinished() {
+				return finished;
+			}
 
-      @Override
-      public void setReadListener(final ReadListener readListener)
-      {
-        // do nothing
-      }
+			@Override
+			public boolean isReady() {
+				return true;
+			}
 
-      @Override
-      public int read()
-      {
-        final int b = inputStream.read();
-        if (b < 0) {
-          finished = true;
-        }
-        return b;
-      }
-    };
-    EasyMock.expect(requestMock.getContentType()).andReturn("application/json").times(2);
-    requestMock.setAttribute("org.apache.druid.proxy.objectMapper", jsonMapper);
-    EasyMock.expectLastCall();
-    EasyMock.expect(requestMock.getRequestURI()).andReturn("/druid/v2/");
-    EasyMock.expect(requestMock.getMethod()).andReturn("POST");
-    EasyMock.expect(requestMock.getInputStream()).andReturn(servletInputStream);
-    requestMock.setAttribute("org.apache.druid.proxy.query", query);
-    requestMock.setAttribute("org.apache.druid.proxy.to.host", "1.2.3.4:9999");
-    requestMock.setAttribute("org.apache.druid.proxy.to.host.scheme", "http");
-    EasyMock.expectLastCall();
-    EasyMock.replay(requestMock);
+			@Override
+			public void setReadListener(final ReadListener readListener) {
+				// do nothing
+			}
 
-    final AtomicLong didService = new AtomicLong();
-    final AsyncQueryForwardingServlet servlet = new AsyncQueryForwardingServlet(
-        new MapQueryToolChestWarehouse(ImmutableMap.of()),
-        jsonMapper,
-        TestHelper.makeSmileMapper(),
-        hostFinder,
-        null,
-        null,
-        new NoopServiceEmitter(),
-        new NoopRequestLogger(),
-        new DefaultGenericQueryMetricsFactory(),
-        new AuthenticatorMapper(ImmutableMap.of())
-    )
-    {
-      @Override
-      protected void doService(
-          final HttpServletRequest request,
-          final HttpServletResponse response
-      )
-      {
-        didService.incrementAndGet();
-      }
-    };
+			@Override
+			public int read() {
+				final int b = inputStream.read();
+				if (b < 0) {
+					finished = true;
+				}
+				return b;
+			}
+		};
+		EasyMock.expect(requestMock.getContentType()).andReturn("application/json").times(2);
+		requestMock.setAttribute("org.apache.druid.proxy.objectMapper", jsonMapper);
+		EasyMock.expectLastCall();
+		EasyMock.expect(requestMock.getRequestURI()).andReturn("/druid/v2/");
+		EasyMock.expect(requestMock.getMethod()).andReturn("POST");
+		EasyMock.expect(requestMock.getInputStream()).andReturn(servletInputStream);
+		requestMock.setAttribute("org.apache.druid.proxy.query", query);
+		requestMock.setAttribute("org.apache.druid.proxy.to.host", "1.2.3.4:9999");
+		requestMock.setAttribute("org.apache.druid.proxy.to.host.scheme", "http");
+		EasyMock.expectLastCall();
+		EasyMock.replay(requestMock);
 
-    servlet.service(requestMock, null);
+		final AtomicLong didService = new AtomicLong();
+		final AsyncQueryForwardingServlet servlet = new AsyncQueryForwardingServlet(
+				new MapQueryToolChestWarehouse(ImmutableMap.of()), jsonMapper, TestHelper.makeSmileMapper(), hostFinder,
+				null, null, NoopServiceEmitter.mockServiceEmitter1(), new NoopRequestLogger(),
+				new DefaultGenericQueryMetricsFactory(), new AuthenticatorMapper(ImmutableMap.of())) {
+			@Override
+			protected void doService(final HttpServletRequest request, final HttpServletResponse response) {
+				didService.incrementAndGet();
+			}
+		};
 
-    // This test is mostly about verifying that the servlet calls the right methods the right number of times.
-    EasyMock.verify(hostFinder, requestMock);
-    Assert.assertEquals(1, didService.get());
-  }
+		servlet.service(requestMock, null);
 
-  private static Server makeTestDeleteServer(int port, final CountDownLatch latch)
-  {
-    Server server = new Server(port);
-    ServletHandler handler = new ServletHandler();
-    handler.addServletWithMapping(new ServletHolder(new HttpServlet()
-    {
-      @Override
-      protected void doDelete(HttpServletRequest req, HttpServletResponse resp)
-      {
-        latch.countDown();
-        resp.setStatus(200);
-      }
-    }), "/default/*");
+		// This test is mostly about verifying that the servlet calls the right methods
+		// the right number of times.
+		EasyMock.verify(hostFinder, requestMock);
+		Assert.assertEquals(1, didService.get());
+	}
 
-    server.setHandler(handler);
-    return server;
-  }
+	private static Server makeTestDeleteServer(int port, final CountDownLatch latch) {
+		Server server = new Server(port);
+		ServletHandler handler = new ServletHandler();
+		handler.addServletWithMapping(new ServletHolder(new HttpServlet() {
+			@Override
+			protected void doDelete(HttpServletRequest req, HttpServletResponse resp) {
+				latch.countDown();
+				resp.setStatus(200);
+			}
+		}), "/default/*");
 
-  public static class ProxyJettyServerInit implements JettyServerInitializer
-  {
+		server.setHandler(handler);
+		return server;
+	}
 
-    private final DruidNode node;
+	public static class ProxyJettyServerInit implements JettyServerInitializer {
 
-    @Inject
-    public ProxyJettyServerInit(@Self DruidNode node)
-    {
-      this.node = node;
-    }
+		private final DruidNode node;
 
-    @Override
-    public void initialize(Server server, Injector injector)
-    {
-      final ServletContextHandler root = new ServletContextHandler(ServletContextHandler.SESSIONS);
-      root.addServlet(new ServletHolder(new DefaultServlet()), "/*");
+		@Inject
+		public ProxyJettyServerInit(@Self DruidNode node) {
+			this.node = node;
+		}
 
-      final QueryHostFinder hostFinder = new QueryHostFinder(null, new RendezvousHashAvaticaConnectionBalancer())
-      {
-        @Override
-        public org.apache.druid.client.selector.Server pickServer(Query query)
-        {
-          return new TestServer("http", "localhost", node.getPlaintextPort());
-        }
+		@Override
+		public void initialize(Server server, Injector injector) {
+			final ServletContextHandler root = new ServletContextHandler(ServletContextHandler.SESSIONS);
+			root.addServlet(new ServletHolder(new DefaultServlet()), "/*");
 
-        @Override
-        public org.apache.druid.client.selector.Server pickDefaultServer()
-        {
-          return new TestServer("http", "localhost", node.getPlaintextPort());
-        }
+			final QueryHostFinder hostFinder = new QueryHostFinder(null,
+					new RendezvousHashAvaticaConnectionBalancer()) {
+				@Override
+				public org.apache.druid.client.selector.Server pickServer(Query query) {
+					return AsyncQueryForwardingServletTest.mockServer1("http", "localhost", node.getPlaintextPort());
+				}
 
-        @Override
-        public Collection<org.apache.druid.client.selector.Server> getAllServers()
-        {
-          return ImmutableList.of(
-              new TestServer("http", "localhost", node.getPlaintextPort()),
-              new TestServer("http", "localhost", port1),
-              new TestServer("http", "localhost", port2)
-          );
-        }
-      };
+				@Override
+				public org.apache.druid.client.selector.Server pickDefaultServer() {
+					return AsyncQueryForwardingServletTest.mockServer1("http", "localhost", node.getPlaintextPort());
+				}
 
-      ObjectMapper jsonMapper = injector.getInstance(ObjectMapper.class);
-      ServletHolder holder = new ServletHolder(
-          new AsyncQueryForwardingServlet(
-              new MapQueryToolChestWarehouse(ImmutableMap.of()),
-              jsonMapper,
-              injector.getInstance(Key.get(ObjectMapper.class, Smile.class)),
-              hostFinder,
-              injector.getProvider(HttpClient.class),
-              injector.getInstance(DruidHttpClientConfig.class),
-              new NoopServiceEmitter(),
-              new NoopRequestLogger(),
-              new DefaultGenericQueryMetricsFactory(),
-              new AuthenticatorMapper(ImmutableMap.of())
-          )
-          {
-            @Override
-            protected String rewriteURI(HttpServletRequest request, String scheme, String host)
-            {
-              String uri = super.rewriteURI(request, scheme, host);
-              if (uri.contains("/druid/v2")) {
-                return URI.create(StringUtils.replace(uri, "/druid/v2", "/default")).toString();
-              }
-              return URI.create(StringUtils.replace(uri, "/proxy", "")).toString();
-            }
-          });
-      //NOTE: explicit maxThreads to workaround https://tickets.puppetlabs.com/browse/TK-152
-      holder.setInitParameter("maxThreads", "256");
-      root.addServlet(holder, "/proxy/*");
-      root.addServlet(holder, "/druid/v2/*");
-      JettyServerInitUtils.addExtensionFilters(root, injector);
-      root.addFilter(GuiceFilter.class, "/slow/*", null);
-      root.addFilter(GuiceFilter.class, "/default/*", null);
-      root.addFilter(GuiceFilter.class, "/exception/*", null);
+				@Override
+				public Collection<org.apache.druid.client.selector.Server> getAllServers() {
+					return ImmutableList.of(
+							AsyncQueryForwardingServletTest.mockServer1("http", "localhost", node.getPlaintextPort()),
+							AsyncQueryForwardingServletTest.mockServer1("http", "localhost", port1),
+							AsyncQueryForwardingServletTest.mockServer1("http", "localhost", port2));
+				}
+			};
 
-      final HandlerList handlerList = new HandlerList();
-      handlerList.setHandlers(
-          new Handler[]{JettyServerInitUtils.wrapWithDefaultGzipHandler(
-              root,
-              ServerConfig.DEFAULT_GZIP_INFLATE_BUFFER_SIZE,
-              Deflater.DEFAULT_COMPRESSION)}
-      );
-      server.setHandler(handlerList);
-    }
-  }
+			ObjectMapper jsonMapper = injector.getInstance(ObjectMapper.class);
+			ServletHolder holder = new ServletHolder(
+					new AsyncQueryForwardingServlet(new MapQueryToolChestWarehouse(ImmutableMap.of()), jsonMapper,
+							injector.getInstance(Key.get(ObjectMapper.class, Smile.class)), hostFinder,
+							injector.getProvider(HttpClient.class), injector.getInstance(DruidHttpClientConfig.class),
+							NoopServiceEmitter.mockServiceEmitter1(), new NoopRequestLogger(),
+							new DefaultGenericQueryMetricsFactory(), new AuthenticatorMapper(ImmutableMap.of())) {
+						@Override
+						protected String rewriteURI(HttpServletRequest request, String scheme, String host) {
+							String uri = super.rewriteURI(request, scheme, host);
+							if (uri.contains("/druid/v2")) {
+								return URI.create(StringUtils.replace(uri, "/druid/v2", "/default")).toString();
+							}
+							return URI.create(StringUtils.replace(uri, "/proxy", "")).toString();
+						}
+					});
+			// NOTE: explicit maxThreads to workaround
+			// https://tickets.puppetlabs.com/browse/TK-152
+			holder.setInitParameter("maxThreads", "256");
+			root.addServlet(holder, "/proxy/*");
+			root.addServlet(holder, "/druid/v2/*");
+			JettyServerInitUtils.addExtensionFilters(root, injector);
+			root.addFilter(GuiceFilter.class, "/slow/*", null);
+			root.addFilter(GuiceFilter.class, "/default/*", null);
+			root.addFilter(GuiceFilter.class, "/exception/*", null);
 
-  @Test
-  public void testRewriteURI()
-  {
+			final HandlerList handlerList = new HandlerList();
+			handlerList.setHandlers(new Handler[] { JettyServerInitUtils.wrapWithDefaultGzipHandler(root,
+					ServerConfig.DEFAULT_GZIP_INFLATE_BUFFER_SIZE, Deflater.DEFAULT_COMPRESSION) });
+			server.setHandler(handlerList);
+		}
+	}
 
-    // test params
-    Assert.assertEquals(
-        "http://localhost:1234/some/path?param=1",
-        AsyncQueryForwardingServlet.makeURI("http", "localhost:1234", "/some/path", "param=1")
-    );
+	@Test
+	public void testRewriteURI() {
 
-    // HttpServletRequest.getQueryString returns encoded form
-    // use ascii representation in case URI is using non-ascii characters
-    Assert.assertEquals(
-        "http://[2a00:1450:4007:805::1007]:1234/some/path?param=1&param2=%E2%82%AC",
-        AsyncQueryForwardingServlet.makeURI(
-            "http",
-            HostAndPort.fromParts("2a00:1450:4007:805::1007", 1234).toString(),
-            "/some/path",
-            "param=1&param2=%E2%82%AC"
-        )
-    );
+		// test params
+		Assert.assertEquals("http://localhost:1234/some/path?param=1",
+				AsyncQueryForwardingServlet.makeURI("http", "localhost:1234", "/some/path", "param=1"));
 
-    // test null query
-    Assert.assertEquals(
-        "http://localhost/",
-        AsyncQueryForwardingServlet.makeURI("http", "localhost", "/", null)
-    );
+		// HttpServletRequest.getQueryString returns encoded form
+		// use ascii representation in case URI is using non-ascii characters
+		Assert.assertEquals("http://[2a00:1450:4007:805::1007]:1234/some/path?param=1&param2=%E2%82%AC",
+				AsyncQueryForwardingServlet.makeURI("http",
+						HostAndPort.fromParts("2a00:1450:4007:805::1007", 1234).toString(), "/some/path",
+						"param=1&param2=%E2%82%AC"));
 
-    // Test reWrite Encoded interval with timezone info
-    // decoded parameters 1900-01-01T00:00:00.000+01.00 -> 1900-01-01T00:00:00.000+01:00
-    Assert.assertEquals(
-        "http://localhost:1234/some/path?intervals=1900-01-01T00%3A00%3A00.000%2B01%3A00%2F3000-01-01T00%3A00%3A00.000%2B01%3A00",
-        AsyncQueryForwardingServlet.makeURI(
-            "http",
-            "localhost:1234",
-            "/some/path",
-            "intervals=1900-01-01T00%3A00%3A00.000%2B01%3A00%2F3000-01-01T00%3A00%3A00.000%2B01%3A00"
-        )
-    );
-  }
+		// test null query
+		Assert.assertEquals("http://localhost/", AsyncQueryForwardingServlet.makeURI("http", "localhost", "/", null));
 
-  private static class TestServer implements org.apache.druid.client.selector.Server
-  {
-
-    private final String scheme;
-    private final String address;
-    private final int port;
-
-    public TestServer(String scheme, String address, int port)
-    {
-      this.scheme = scheme;
-      this.address = address;
-      this.port = port;
-    }
-
-    @Override
-    public String getScheme()
-    {
-      return scheme;
-    }
-
-    @Override
-    public String getHost()
-    {
-      return address + ":" + port;
-    }
-
-    @Override
-    public String getAddress()
-    {
-      return address;
-    }
-
-    @Override
-    public int getPort()
-    {
-      return port;
-    }
-  }
+		// Test reWrite Encoded interval with timezone info
+		// decoded parameters 1900-01-01T00:00:00.000+01.00 ->
+		// 1900-01-01T00:00:00.000+01:00
+		Assert.assertEquals(
+				"http://localhost:1234/some/path?intervals=1900-01-01T00%3A00%3A00.000%2B01%3A00%2F3000-01-01T00%3A00%3A00.000%2B01%3A00",
+				AsyncQueryForwardingServlet.makeURI("http", "localhost:1234", "/some/path",
+						"intervals=1900-01-01T00%3A00%3A00.000%2B01%3A00%2F3000-01-01T00%3A00%3A00.000%2B01%3A00"));
+	}
 }

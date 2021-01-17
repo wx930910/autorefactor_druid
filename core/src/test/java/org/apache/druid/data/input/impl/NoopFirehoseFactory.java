@@ -22,33 +22,26 @@ package org.apache.druid.data.input.impl;
 import org.apache.druid.data.input.FiniteFirehoseFactory;
 import org.apache.druid.data.input.InputSplit;
 import org.apache.druid.data.input.SplitHintSpec;
+import org.mockito.Mockito;
 
-import javax.annotation.Nullable;
-import java.util.stream.Stream;
-
-public class NoopFirehoseFactory implements FiniteFirehoseFactory
-{
-  @Override
-  public String toString()
-  {
-    return "NoopFirehoseFactory{}";
-  }
-
-  @Override
-  public Stream<InputSplit> getSplits(@Nullable SplitHintSpec splitHintSpec)
-  {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public int getNumSplits(@Nullable SplitHintSpec splitHintSpec)
-  {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public FiniteFirehoseFactory withSplit(InputSplit split)
-  {
-    throw new UnsupportedOperationException();
-  }
+public class NoopFirehoseFactory {
+	static public FiniteFirehoseFactory mockFiniteFirehoseFactory1() {
+		FiniteFirehoseFactory mockInstance = Mockito.spy(FiniteFirehoseFactory.class);
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				throw new UnsupportedOperationException();
+			}).when(mockInstance).getSplits(Mockito.any(SplitHintSpec.class));
+			Mockito.doAnswer((stubInvo) -> {
+				throw new UnsupportedOperationException();
+			}).when(mockInstance).withSplit(Mockito.any(InputSplit.class));
+			Mockito.doAnswer((stubInvo) -> {
+				return "NoopFirehoseFactory{}";
+			}).when(mockInstance).toString();
+			Mockito.doAnswer((stubInvo) -> {
+				throw new UnsupportedOperationException();
+			}).when(mockInstance).getNumSplits(Mockito.any(SplitHintSpec.class));
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 }

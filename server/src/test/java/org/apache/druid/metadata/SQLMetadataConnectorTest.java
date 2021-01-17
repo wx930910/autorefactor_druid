@@ -19,227 +19,148 @@
 
 package org.apache.druid.metadata;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Supplier;
-import com.google.common.base.Suppliers;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.apache.commons.dbcp2.BasicDataSource;
 import org.apache.druid.java.util.common.StringUtils;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.skife.jdbi.v2.DBI;
+import org.mockito.Mockito;
 import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.tweak.HandleCallback;
 
-import java.util.ArrayList;
-import java.util.List;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Supplier;
+import com.google.common.base.Suppliers;
 
+public class SQLMetadataConnectorTest {
+	static public SQLMetadataConnector mockSQLMetadataConnector1(Supplier<MetadataStorageConnectorConfig> config,
+			Supplier<MetadataStorageTablesConfig> tablesConfigSupplier) {
+		SQLMetadataConnector mockInstance = Mockito.mock(SQLMetadataConnector.class, Mockito.withSettings()
+				.useConstructor(config, tablesConfigSupplier).defaultAnswer(Mockito.CALLS_REAL_METHODS));
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				return false;
+			}).when(mockInstance).tableExists(Mockito.any(Handle.class), Mockito.any(String.class));
+			Mockito.doAnswer((stubInvo) -> {
+				return 0;
+			}).when(mockInstance).getStreamingFetchSize();
+			Mockito.doAnswer((stubInvo) -> {
+				return null;
+			}).when(mockInstance).getDBI();
+			Mockito.doAnswer((stubInvo) -> {
+				return stubInvo.callRealMethod();
+			}).when(mockInstance).getDatasource();
+			Mockito.doAnswer((stubInvo) -> {
+				return null;
+			}).when(mockInstance).getSerialType();
+			Mockito.doAnswer((stubInvo) -> {
+				return null;
+			}).when(mockInstance).getQuoteString();
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 
-public class SQLMetadataConnectorTest
-{
-  @Rule
-  public final TestDerbyConnector.DerbyConnectorRule derbyConnectorRule = new TestDerbyConnector.DerbyConnectorRule();
+	@Rule
+	public final TestDerbyConnector.DerbyConnectorRule derbyConnectorRule = new TestDerbyConnector.DerbyConnectorRule();
 
-  private TestDerbyConnector connector;
-  private MetadataStorageTablesConfig tablesConfig;
-  private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+	private TestDerbyConnector connector;
+	private MetadataStorageTablesConfig tablesConfig;
+	private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
-  @Before
-  public void setUp()
-  {
-    connector = derbyConnectorRule.getConnector();
-    tablesConfig = derbyConnectorRule.metadataTablesConfigSupplier().get();
-  }
+	@Before
+	public void setUp() {
+		connector = derbyConnectorRule.getConnector();
+		tablesConfig = derbyConnectorRule.metadataTablesConfigSupplier().get();
+	}
 
-  @Test
-  public void testCreateTables()
-  {
-    final List<String> tables = new ArrayList<>();
-    final String entryType = tablesConfig.getTaskEntryType();
-    tables.add(tablesConfig.getConfigTable());
-    tables.add(tablesConfig.getSegmentsTable());
-    tables.add(tablesConfig.getRulesTable());
-    tables.add(tablesConfig.getLockTable(entryType));
-    tables.add(tablesConfig.getLogTable(entryType));
-    tables.add(tablesConfig.getEntryTable(entryType));
-    tables.add(tablesConfig.getAuditTable());
-    tables.add(tablesConfig.getSupervisorTable());
+	@Test
+	public void testCreateTables() {
+		final List<String> tables = new ArrayList<>();
+		final String entryType = tablesConfig.getTaskEntryType();
+		tables.add(tablesConfig.getConfigTable());
+		tables.add(tablesConfig.getSegmentsTable());
+		tables.add(tablesConfig.getRulesTable());
+		tables.add(tablesConfig.getLockTable(entryType));
+		tables.add(tablesConfig.getLogTable(entryType));
+		tables.add(tablesConfig.getEntryTable(entryType));
+		tables.add(tablesConfig.getAuditTable());
+		tables.add(tablesConfig.getSupervisorTable());
 
-    connector.createSegmentTable();
-    connector.createConfigTable();
-    connector.createRulesTable();
-    connector.createTaskTables();
-    connector.createAuditTable();
-    connector.createSupervisorsTable();
+		connector.createSegmentTable();
+		connector.createConfigTable();
+		connector.createRulesTable();
+		connector.createTaskTables();
+		connector.createAuditTable();
+		connector.createSupervisorsTable();
 
-    connector.getDBI().withHandle(
-        new HandleCallback<Void>()
-        {
-          @Override
-          public Void withHandle(Handle handle)
-          {
-            for (String table : tables) {
-              Assert.assertTrue(
-                  StringUtils.format("table %s was not created!", table),
-                  connector.tableExists(handle, table)
-              );
-            }
+		connector.getDBI().withHandle(new HandleCallback<Void>() {
+			@Override
+			public Void withHandle(Handle handle) {
+				for (String table : tables) {
+					Assert.assertTrue(StringUtils.format("table %s was not created!", table),
+							connector.tableExists(handle, table));
+				}
 
-            return null;
-          }
-        }
-    );
+				return null;
+			}
+		});
 
-    for (String table : tables) {
-      dropTable(table);
-    }
-  }
+		for (String table : tables) {
+			dropTable(table);
+		}
+	}
 
-  @Test
-  public void testInsertOrUpdate()
-  {
-    final String tableName = "test";
-    connector.createConfigTable(tableName);
+	@Test
+	public void testInsertOrUpdate() {
+		final String tableName = "test";
+		connector.createConfigTable(tableName);
 
-    Assert.assertNull(connector.lookup(tableName, "name", "payload", "emperor"));
+		Assert.assertNull(connector.lookup(tableName, "name", "payload", "emperor"));
 
-    connector.insertOrUpdate(
-        tableName,
-        "name",
-        "payload",
-        "emperor",
-        StringUtils.toUtf8("penguin")
-    );
-    Assert.assertArrayEquals(
-        StringUtils.toUtf8("penguin"),
-        connector.lookup(tableName, "name", "payload", "emperor")
-    );
+		connector.insertOrUpdate(tableName, "name", "payload", "emperor", StringUtils.toUtf8("penguin"));
+		Assert.assertArrayEquals(StringUtils.toUtf8("penguin"),
+				connector.lookup(tableName, "name", "payload", "emperor"));
 
-    connector.insertOrUpdate(
-        tableName,
-        "name",
-        "payload",
-        "emperor",
-        StringUtils.toUtf8("penguin chick")
-    );
+		connector.insertOrUpdate(tableName, "name", "payload", "emperor", StringUtils.toUtf8("penguin chick"));
 
-    Assert.assertArrayEquals(
-        StringUtils.toUtf8("penguin chick"),
-        connector.lookup(tableName, "name", "payload", "emperor")
-    );
+		Assert.assertArrayEquals(StringUtils.toUtf8("penguin chick"),
+				connector.lookup(tableName, "name", "payload", "emperor"));
 
-    dropTable(tableName);
-  }
+		dropTable(tableName);
+	}
 
-  private void dropTable(final String tableName)
-  {
-    connector.getDBI().withHandle(
-        new HandleCallback<Void>()
-        {
-          @Override
-          public Void withHandle(Handle handle)
-          {
-            handle.createStatement(StringUtils.format("DROP TABLE %s", tableName))
-                  .execute();
-            return null;
-          }
-        }
-    );
-  }
+	private void dropTable(final String tableName) {
+		connector.getDBI().withHandle(new HandleCallback<Void>() {
+			@Override
+			public Void withHandle(Handle handle) {
+				handle.createStatement(StringUtils.format("DROP TABLE %s", tableName)).execute();
+				return null;
+			}
+		});
+	}
 
-  static class TestSQLMetadataConnector extends SQLMetadataConnector
-  {
-    public TestSQLMetadataConnector(
-        Supplier<MetadataStorageConnectorConfig> config,
-        Supplier<MetadataStorageTablesConfig> tablesConfigSupplier
-    )
-    {
-      super(config, tablesConfigSupplier);
-    }
+	private MetadataStorageConnectorConfig getDbcpPropertiesFile(boolean createTables, String host, int port,
+			String connectURI, String user, String pwdString, String pwd) throws Exception {
+		return JSON_MAPPER.readValue("{" + "\"createTables\": \"" + createTables + "\"," + "\"host\": \"" + host + "\","
+				+ "\"port\": \"" + port + "\"," + "\"connectURI\": \"" + connectURI + "\"," + "\"user\": \"" + user
+				+ "\"," + "\"password\": " + pwdString + "," + "\"dbcp\": {\n"
+				+ "  \"maxConnLifetimeMillis\" : 1200000,\n" + "  \"defaultQueryTimeout\" : \"30000\"\n" + "}" + "}",
+				MetadataStorageConnectorConfig.class);
+	}
 
-    @Override
-    protected String getSerialType()
-    {
-      return null;
-    }
-
-    @Override
-    protected int getStreamingFetchSize()
-    {
-      return 0;
-    }
-
-    @Override
-    public String getQuoteString()
-    {
-      return null;
-    }
-
-    @Override
-    public boolean tableExists(Handle handle, String tableName)
-    {
-      return false;
-    }
-
-    @Override
-    public DBI getDBI()
-    {
-      return null;
-    }
-
-    @Override
-    protected BasicDataSource getDatasource()
-    {
-      return super.getDatasource();
-    }
-  }
-
-  private MetadataStorageConnectorConfig getDbcpPropertiesFile(
-      boolean createTables,
-      String host,
-      int port,
-      String connectURI,
-      String user,
-      String pwdString,
-      String pwd
-  ) throws Exception
-  {
-    return JSON_MAPPER.readValue(
-        "{" +
-        "\"createTables\": \"" + createTables + "\"," +
-        "\"host\": \"" + host + "\"," +
-        "\"port\": \"" + port + "\"," +
-        "\"connectURI\": \"" + connectURI + "\"," +
-        "\"user\": \"" + user + "\"," +
-        "\"password\": " + pwdString + "," +
-        "\"dbcp\": {\n" +
-        "  \"maxConnLifetimeMillis\" : 1200000,\n" +
-        "  \"defaultQueryTimeout\" : \"30000\"\n" +
-        "}" +
-        "}",
-        MetadataStorageConnectorConfig.class
-    );
-  }
-
-  @Test
-  public void testBasicDataSourceCreation() throws Exception
-  {
-    MetadataStorageConnectorConfig config = getDbcpPropertiesFile(
-        true,
-        "host",
-        1234,
-        "connectURI",
-        "user",
-        "{\"type\":\"default\",\"password\":\"nothing\"}",
-        "nothing"
-    );
-    TestSQLMetadataConnector testSQLMetadataConnector = new TestSQLMetadataConnector(
-        Suppliers.ofInstance(config),
-        Suppliers.ofInstance(tablesConfig)
-    );
-    BasicDataSource dataSource = testSQLMetadataConnector.getDatasource();
-    Assert.assertEquals(dataSource.getMaxConnLifetimeMillis(), 1200000);
-    Assert.assertEquals((long) dataSource.getDefaultQueryTimeout(), 30000);
-  }
+	@Test
+	public void testBasicDataSourceCreation() throws Exception {
+		MetadataStorageConnectorConfig config = getDbcpPropertiesFile(true, "host", 1234, "connectURI", "user",
+				"{\"type\":\"default\",\"password\":\"nothing\"}", "nothing");
+		SQLMetadataConnector testSQLMetadataConnector = SQLMetadataConnectorTest
+				.mockSQLMetadataConnector1(Suppliers.ofInstance(config), Suppliers.ofInstance(tablesConfig));
+		BasicDataSource dataSource = testSQLMetadataConnector.getDatasource();
+		Assert.assertEquals(dataSource.getMaxConnLifetimeMillis(), 1200000);
+		Assert.assertEquals((long) dataSource.getDefaultQueryTimeout(), 30000);
+	}
 }

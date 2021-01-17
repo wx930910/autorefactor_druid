@@ -19,18 +19,24 @@
 
 package org.apache.druid.segment.loading;
 
-import org.apache.druid.timeline.DataSegment;
-
 import java.util.Map;
+
+import org.apache.druid.timeline.DataSegment;
+import org.mockito.Mockito;
 
 /**
  * Mostly used for test purpose.
  */
-public class NoopDataSegmentMover implements DataSegmentMover
-{
-  @Override
-  public DataSegment move(DataSegment segment, Map<String, Object> targetLoadSpec)
-  {
-    return segment;
-  }
+public class NoopDataSegmentMover {
+	static public DataSegmentMover mockDataSegmentMover1() {
+		DataSegmentMover mockInstance = Mockito.spy(DataSegmentMover.class);
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				DataSegment segment = stubInvo.getArgument(0);
+				return segment;
+			}).when(mockInstance).move(Mockito.any(DataSegment.class), Mockito.any(Map.class));
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 }

@@ -19,30 +19,26 @@
 
 package org.apache.druid.data.input.impl;
 
+import java.io.File;
+
 import org.apache.druid.data.input.InputEntity;
 import org.apache.druid.data.input.InputEntityReader;
 import org.apache.druid.data.input.InputFormat;
 import org.apache.druid.data.input.InputRowSchema;
 
-import java.io.File;
+public class NoopInputFormat implements InputFormat {
+	@Override
+	public boolean isSplittable() {
+		return false;
+	}
 
-public class NoopInputFormat implements InputFormat
-{
-  @Override
-  public boolean isSplittable()
-  {
-    return false;
-  }
+	@Override
+	public InputEntityReader createReader(InputRowSchema inputRowSchema, InputEntity source, File temporaryDirectory) {
+		throw new UnsupportedOperationException();
+	}
 
-  @Override
-  public InputEntityReader createReader(InputRowSchema inputRowSchema, InputEntity source, File temporaryDirectory)
-  {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public String toString()
-  {
-    return "NoopInputFormat{}";
-  }
+	@Override
+	public String toString() {
+		return "NoopInputFormat{}";
+	}
 }

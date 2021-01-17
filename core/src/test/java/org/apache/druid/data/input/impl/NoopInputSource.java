@@ -19,41 +19,32 @@
 
 package org.apache.druid.data.input.impl;
 
+import java.io.File;
+
 import org.apache.druid.data.input.InputFormat;
 import org.apache.druid.data.input.InputRowSchema;
 import org.apache.druid.data.input.InputSource;
-import org.apache.druid.data.input.InputSourceReader;
+import org.mockito.Mockito;
 
-import javax.annotation.Nullable;
-import java.io.File;
-
-public class NoopInputSource implements InputSource
-{
-  @Override
-  public String toString()
-  {
-    return "NoopInputSource{}";
-  }
-
-  @Override
-  public boolean isSplittable()
-  {
-    return false;
-  }
-
-  @Override
-  public boolean needsFormat()
-  {
-    return false;
-  }
-
-  @Override
-  public InputSourceReader reader(
-      InputRowSchema inputRowSchema,
-      @Nullable InputFormat inputFormat,
-      @Nullable File temporaryDirectory
-  )
-  {
-    throw new UnsupportedOperationException();
-  }
+public class NoopInputSource {
+	static public InputSource mockInputSource1() {
+		InputSource mockInstance = Mockito.spy(InputSource.class);
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				return "NoopInputSource{}";
+			}).when(mockInstance).toString();
+			Mockito.doAnswer((stubInvo) -> {
+				return false;
+			}).when(mockInstance).needsFormat();
+			Mockito.doAnswer((stubInvo) -> {
+				return false;
+			}).when(mockInstance).isSplittable();
+			Mockito.doAnswer((stubInvo) -> {
+				throw new UnsupportedOperationException();
+			}).when(mockInstance).reader(Mockito.any(InputRowSchema.class), Mockito.any(InputFormat.class),
+					Mockito.any(File.class));
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 }

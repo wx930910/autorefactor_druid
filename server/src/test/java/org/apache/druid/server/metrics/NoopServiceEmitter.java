@@ -21,16 +21,15 @@ package org.apache.druid.server.metrics;
 
 import org.apache.druid.java.util.emitter.core.Event;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
+import org.mockito.Mockito;
 
-public class NoopServiceEmitter extends ServiceEmitter
-{
-  public NoopServiceEmitter()
-  {
-    super("", "", null);
-  }
-
-  @Override
-  public void emit(Event event)
-  {
-  }
+public class NoopServiceEmitter {
+	static public ServiceEmitter mockServiceEmitter1() {
+		ServiceEmitter mockInstance = Mockito.spy(new ServiceEmitter("", "", null));
+		try {
+			Mockito.doNothing().when(mockInstance).emit(Mockito.any(Event.class));
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 }

@@ -19,8 +19,11 @@
 
 package org.apache.druid.server.lookup.namespace;
 
-import com.google.common.collect.ImmutableMap;
+import java.util.Collections;
+import java.util.Map;
+
 import org.apache.druid.java.util.common.lifecycle.Lifecycle;
+import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.query.lookup.namespace.StaticMapExtractionNamespace;
 import org.apache.druid.server.lookup.namespace.cache.CacheScheduler;
 import org.apache.druid.server.lookup.namespace.cache.OnHeapNamespaceExtractionCacheManager;
@@ -30,52 +33,44 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.Collections;
-import java.util.Map;
+import com.google.common.collect.ImmutableMap;
 
-public class StaticMapCacheGeneratorTest
-{
-  private static final Map<String, String> MAP = ImmutableMap.<String, String>builder().put("foo", "bar").build();
+public class StaticMapCacheGeneratorTest {
+	private static final Map<String, String> MAP = ImmutableMap.<String, String>builder().put("foo", "bar").build();
 
-  private Lifecycle lifecycle;
-  private CacheScheduler scheduler;
+	private Lifecycle lifecycle;
+	private CacheScheduler scheduler;
 
-  @Before
-  public void setup() throws Exception
-  {
-    lifecycle = new Lifecycle();
-    lifecycle.start();
-    NoopServiceEmitter noopServiceEmitter = new NoopServiceEmitter();
-    scheduler = new CacheScheduler(
-        noopServiceEmitter,
-        Collections.emptyMap(),
-        new OnHeapNamespaceExtractionCacheManager(lifecycle, noopServiceEmitter, new NamespaceExtractionConfig())
-    );
-  }
+	@Before
+	public void setup() throws Exception {
+		lifecycle = new Lifecycle();
+		lifecycle.start();
+		ServiceEmitter noopServiceEmitter = NoopServiceEmitter.mockServiceEmitter1();
+		scheduler = new CacheScheduler(noopServiceEmitter, Collections.emptyMap(),
+				new OnHeapNamespaceExtractionCacheManager(lifecycle, noopServiceEmitter,
+						new NamespaceExtractionConfig()));
+	}
 
-  @After
-  public void tearDown()
-  {
-    lifecycle.stop();
-  }
+	@After
+	public void tearDown() {
+		lifecycle.stop();
+	}
 
-  @Test
-  public void testSimpleGenerator()
-  {
-    final StaticMapCacheGenerator factory = new StaticMapCacheGenerator();
-    final StaticMapExtractionNamespace namespace = new StaticMapExtractionNamespace(MAP);
-    CacheScheduler.VersionedCache versionedCache = factory.generateCache(namespace, null, null, scheduler);
-    Assert.assertNotNull(versionedCache);
-    Assert.assertEquals(factory.getVersion(), versionedCache.getVersion());
-    Assert.assertEquals(MAP, versionedCache.getCache());
+	@Test
+	public void testSimpleGenerator() {
+		final StaticMapCacheGenerator factory = new StaticMapCacheGenerator();
+		final StaticMapExtractionNamespace namespace = new StaticMapExtractionNamespace(MAP);
+		CacheScheduler.VersionedCache versionedCache = factory.generateCache(namespace, null, null, scheduler);
+		Assert.assertNotNull(versionedCache);
+		Assert.assertEquals(factory.getVersion(), versionedCache.getVersion());
+		Assert.assertEquals(MAP, versionedCache.getCache());
 
-  }
+	}
 
-  @Test(expected = AssertionError.class)
-  public void testNonNullLastVersionCausesAssertionError()
-  {
-    final StaticMapCacheGenerator factory = new StaticMapCacheGenerator();
-    final StaticMapExtractionNamespace namespace = new StaticMapExtractionNamespace(MAP);
-    factory.generateCache(namespace, null, factory.getVersion(), scheduler);
-  }
+	@Test(expected = AssertionError.class)
+	public void testNonNullLastVersionCausesAssertionError() {
+		final StaticMapCacheGenerator factory = new StaticMapCacheGenerator();
+		final StaticMapExtractionNamespace namespace = new StaticMapExtractionNamespace(MAP);
+		factory.generateCache(namespace, null, factory.getVersion(), scheduler);
+	}
 }

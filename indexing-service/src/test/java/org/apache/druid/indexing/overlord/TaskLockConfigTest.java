@@ -19,7 +19,8 @@
 
 package org.apache.druid.indexing.overlord;
 
-import com.google.common.base.Optional;
+import javax.annotation.Nullable;
+
 import org.apache.druid.indexing.common.actions.LocalTaskActionClientFactory;
 import org.apache.druid.indexing.common.actions.TaskActionClientFactory;
 import org.apache.druid.indexing.common.config.TaskStorageConfig;
@@ -37,81 +38,73 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import javax.annotation.Nullable;
+import com.google.common.base.Optional;
 
-public class TaskLockConfigTest
-{
-  private TaskStorage taskStorage;
+public class TaskLockConfigTest {
+	private TaskStorage taskStorage;
 
-  @Before
-  public void setup()
-  {
-    taskStorage = new HeapMemoryTaskStorage(new TaskStorageConfig(null));
-  }
+	@Before
+	public void setup() {
+		taskStorage = new HeapMemoryTaskStorage(new TaskStorageConfig(null));
+	}
 
-  @Test
-  public void testDefault() throws EntryExistsException
-  {
-    final TaskQueue taskQueue = createTaskQueue(null);
-    taskQueue.start();
-    final Task task = NoopTask.create();
-    Assert.assertTrue(taskQueue.add(task));
-    taskQueue.stop();
-    final Optional<Task> optionalTask = taskStorage.getTask(task.getId());
-    Assert.assertTrue(optionalTask.isPresent());
-    final Task fromTaskStorage = optionalTask.get();
-    Assert.assertTrue(fromTaskStorage.getContextValue(Tasks.FORCE_TIME_CHUNK_LOCK_KEY));
-  }
+	@Test
+	public void testDefault() throws EntryExistsException {
+		final TaskQueue taskQueue = createTaskQueue(null);
+		taskQueue.start();
+		final Task task = NoopTask.create();
+		Assert.assertTrue(taskQueue.add(task));
+		taskQueue.stop();
+		final Optional<Task> optionalTask = taskStorage.getTask(task.getId());
+		Assert.assertTrue(optionalTask.isPresent());
+		final Task fromTaskStorage = optionalTask.get();
+		Assert.assertTrue(fromTaskStorage.getContextValue(Tasks.FORCE_TIME_CHUNK_LOCK_KEY));
+	}
 
-  @Test
-  public void testNotForceTimeChunkLock() throws EntryExistsException
-  {
-    final TaskQueue taskQueue = createTaskQueue(false);
-    taskQueue.start();
-    final Task task = NoopTask.create();
-    Assert.assertTrue(taskQueue.add(task));
-    taskQueue.stop();
-    final Optional<Task> optionalTask = taskStorage.getTask(task.getId());
-    Assert.assertTrue(optionalTask.isPresent());
-    final Task fromTaskStorage = optionalTask.get();
-    Assert.assertFalse(fromTaskStorage.getContextValue(Tasks.FORCE_TIME_CHUNK_LOCK_KEY));
-  }
+	@Test
+	public void testNotForceTimeChunkLock() throws EntryExistsException {
+		final TaskQueue taskQueue = createTaskQueue(false);
+		taskQueue.start();
+		final Task task = NoopTask.create();
+		Assert.assertTrue(taskQueue.add(task));
+		taskQueue.stop();
+		final Optional<Task> optionalTask = taskStorage.getTask(task.getId());
+		Assert.assertTrue(optionalTask.isPresent());
+		final Task fromTaskStorage = optionalTask.get();
+		Assert.assertFalse(fromTaskStorage.getContextValue(Tasks.FORCE_TIME_CHUNK_LOCK_KEY));
+	}
 
-  @Test
-  public void testOverwriteDefault() throws EntryExistsException
-  {
-    final TaskQueue taskQueue = createTaskQueue(null);
-    taskQueue.start();
-    final Task task = NoopTask.create();
-    task.addToContext(Tasks.FORCE_TIME_CHUNK_LOCK_KEY, false);
-    Assert.assertTrue(taskQueue.add(task));
-    taskQueue.stop();
-    final Optional<Task> optionalTask = taskStorage.getTask(task.getId());
-    Assert.assertTrue(optionalTask.isPresent());
-    final Task fromTaskStorage = optionalTask.get();
-    Assert.assertFalse(fromTaskStorage.getContextValue(Tasks.FORCE_TIME_CHUNK_LOCK_KEY));
-  }
+	@Test
+	public void testOverwriteDefault() throws EntryExistsException {
+		final TaskQueue taskQueue = createTaskQueue(null);
+		taskQueue.start();
+		final Task task = NoopTask.create();
+		task.addToContext(Tasks.FORCE_TIME_CHUNK_LOCK_KEY, false);
+		Assert.assertTrue(taskQueue.add(task));
+		taskQueue.stop();
+		final Optional<Task> optionalTask = taskStorage.getTask(task.getId());
+		Assert.assertTrue(optionalTask.isPresent());
+		final Task fromTaskStorage = optionalTask.get();
+		Assert.assertFalse(fromTaskStorage.getContextValue(Tasks.FORCE_TIME_CHUNK_LOCK_KEY));
+	}
 
-  private TaskQueue createTaskQueue(@Nullable Boolean forceTimeChunkLock)
-  {
-    final TaskLockConfig lockConfig;
-    if (forceTimeChunkLock != null) {
-      lockConfig = new TaskLockConfig()
-      {
-        @Override
-        public boolean isForceTimeChunkLock()
-        {
-          return forceTimeChunkLock;
-        }
-      };
-    } else {
-      lockConfig = new TaskLockConfig();
-    }
-    final TaskQueueConfig queueConfig = new TaskQueueConfig(null, null, null, null);
-    final TaskRunner taskRunner = EasyMock.createNiceMock(RemoteTaskRunner.class);
-    final TaskActionClientFactory actionClientFactory = EasyMock.createNiceMock(LocalTaskActionClientFactory.class);
-    final TaskLockbox lockbox = new TaskLockbox(taskStorage, new TestIndexerMetadataStorageCoordinator());
-    final ServiceEmitter emitter = new NoopServiceEmitter();
-    return new TaskQueue(lockConfig, queueConfig, taskStorage, taskRunner, actionClientFactory, lockbox, emitter);
-  }
+	private TaskQueue createTaskQueue(@Nullable Boolean forceTimeChunkLock) {
+		final TaskLockConfig lockConfig;
+		if (forceTimeChunkLock != null) {
+			lockConfig = new TaskLockConfig() {
+				@Override
+				public boolean isForceTimeChunkLock() {
+					return forceTimeChunkLock;
+				}
+			};
+		} else {
+			lockConfig = new TaskLockConfig();
+		}
+		final TaskQueueConfig queueConfig = new TaskQueueConfig(null, null, null, null);
+		final TaskRunner taskRunner = EasyMock.createNiceMock(RemoteTaskRunner.class);
+		final TaskActionClientFactory actionClientFactory = EasyMock.createNiceMock(LocalTaskActionClientFactory.class);
+		final TaskLockbox lockbox = new TaskLockbox(taskStorage, new TestIndexerMetadataStorageCoordinator());
+		final ServiceEmitter emitter = NoopServiceEmitter.mockServiceEmitter1();
+		return new TaskQueue(lockConfig, queueConfig, taskStorage, taskRunner, actionClientFactory, lockbox, emitter);
+	}
 }

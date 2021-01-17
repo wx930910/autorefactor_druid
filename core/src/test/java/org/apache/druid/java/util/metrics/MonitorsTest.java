@@ -19,48 +19,72 @@
 
 package org.apache.druid.java.util.metrics;
 
-import com.google.common.collect.ImmutableMap;
-import org.apache.druid.java.util.common.StringUtils;
-import org.apache.druid.java.util.emitter.core.Event;
-import org.junit.Assert;
-import org.junit.Test;
-
+import java.util.ArrayList;
 import java.util.List;
 
-public class MonitorsTest
-{
+import org.apache.druid.java.util.common.StringUtils;
+import org.apache.druid.java.util.emitter.core.Event;
+import org.apache.druid.java.util.emitter.service.ServiceEmitter;
+import org.junit.Assert;
+import org.junit.Test;
+import org.mockito.Mockito;
 
-  @Test
-  public void testSetFeed()
-  {
-    String feed = "testFeed";
-    StubServiceEmitter emitter = new StubServiceEmitter("dev/monitor-test", "localhost:0000");
-    Monitor m = Monitors.createCompoundJvmMonitor(ImmutableMap.of(), feed);
-    m.start();
-    m.monitor(emitter);
-    m.stop();
-    checkEvents(emitter.getEvents(), feed);
-  }
+import com.google.common.collect.ImmutableMap;
 
-  @Test
-  public void testDefaultFeed()
-  {
-    StubServiceEmitter emitter = new StubServiceEmitter("dev/monitor-test", "localhost:0000");
-    Monitor m = Monitors.createCompoundJvmMonitor(ImmutableMap.of());
-    m.start();
-    m.monitor(emitter);
-    m.stop();
-    checkEvents(emitter.getEvents(), "metrics");
-  }
+public class MonitorsTest {
 
-  private void checkEvents(List<Event> events, String expectedFeed)
-  {
-    Assert.assertFalse("no events emitted", events.isEmpty());
-    for (Event e : events) {
-      if (!expectedFeed.equals(e.getFeed())) {
-        String message = StringUtils.format("\"feed\" in event: %s", e.toMap().toString());
-        Assert.assertEquals(message, expectedFeed, e.getFeed());
-      }
-    }
-  }
+	@Test
+	public void testSetFeed() {
+		String feed = "testFeed";
+		ServiceEmitter emitter = Mockito.spy(new ServiceEmitter("dev/monitor-test", "localhost:0000", null));
+		List<Event> emitterEvents = new ArrayList<>();
+		try {
+			Mockito.doNothing().when(emitter).close();
+			Mockito.doAnswer((stubInvo) -> {
+				Event event = stubInvo.getArgument(0);
+				emitterEvents.add(event);
+				return null;
+			}).when(emitter).emit(Mockito.any(Event.class));
+			Mockito.doNothing().when(emitter).start();
+			Mockito.doNothing().when(emitter).flush();
+		} catch (Exception exception) {
+		}
+		Monitor m = Monitors.createCompoundJvmMonitor(ImmutableMap.of(), feed);
+		m.start();
+		m.monitor(emitter);
+		m.stop();
+		checkEvents(emitterEvents, feed);
+	}
+
+	@Test
+	public void testDefaultFeed() {
+		ServiceEmitter emitter = Mockito.spy(new ServiceEmitter("dev/monitor-test", "localhost:0000", null));
+		List<Event> emitterEvents = new ArrayList<>();
+		try {
+			Mockito.doNothing().when(emitter).close();
+			Mockito.doAnswer((stubInvo) -> {
+				Event event = stubInvo.getArgument(0);
+				emitterEvents.add(event);
+				return null;
+			}).when(emitter).emit(Mockito.any(Event.class));
+			Mockito.doNothing().when(emitter).start();
+			Mockito.doNothing().when(emitter).flush();
+		} catch (Exception exception) {
+		}
+		Monitor m = Monitors.createCompoundJvmMonitor(ImmutableMap.of());
+		m.start();
+		m.monitor(emitter);
+		m.stop();
+		checkEvents(emitterEvents, "metrics");
+	}
+
+	private void checkEvents(List<Event> events, String expectedFeed) {
+		Assert.assertFalse("no events emitted", events.isEmpty());
+		for (Event e : events) {
+			if (!expectedFeed.equals(e.getFeed())) {
+				String message = StringUtils.format("\"feed\" in event: %s", e.toMap().toString());
+				Assert.assertEquals(message, expectedFeed, e.getFeed());
+			}
+		}
+	}
 }

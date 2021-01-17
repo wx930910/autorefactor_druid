@@ -21,55 +21,42 @@ package org.apache.druid.indexing.overlord;
 
 import org.apache.druid.indexing.overlord.config.RemoteTaskRunnerConfig;
 import org.joda.time.Period;
+import org.mockito.Mockito;
 
 /**
  */
-public class TestRemoteTaskRunnerConfig extends RemoteTaskRunnerConfig {
-	private final Period timeout;
-
-	public TestRemoteTaskRunnerConfig(Period timeout) {
-		this.timeout = timeout;
-	}
-
-	@Override
-	public Period getTaskAssignmentTimeout() {
-		return timeout;
-	}
-
-	@Override
-	public Period getTaskCleanupTimeout() {
-		return timeout;
-	}
-
-	@Override
-	public int getMaxZnodeBytes() {
-		// make sure this is large enough, otherwise RemoteTaskRunnerTest might fail
-		// unexpectedly
-		return 10 * 1024;
-	}
-
-	@Override
-	public Period getTaskShutdownLinkTimeout() {
-		return timeout;
-	}
-
-	@Override
-	public String getMinWorkerVersion() {
-		return "";
-	}
-
-	@Override
-	public int getMaxRetriesBeforeBlacklist() {
-		return 1;
-	}
-
-	@Override
-	public Period getWorkerBlackListBackoffTime() {
-		return timeout;
-	}
-
-	@Override
-	public Period getWorkerBlackListCleanupPeriod() {
-		return timeout;
+public class TestRemoteTaskRunnerConfig {
+	static public RemoteTaskRunnerConfig mockRemoteTaskRunnerConfig1(Period timeout) {
+		Period[] mockFieldVariableTimeout = new Period[1];
+		RemoteTaskRunnerConfig mockInstance = Mockito.spy(RemoteTaskRunnerConfig.class);
+		mockFieldVariableTimeout[0] = timeout;
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				return "";
+			}).when(mockInstance).getMinWorkerVersion();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableTimeout[0];
+			}).when(mockInstance).getWorkerBlackListBackoffTime();
+			Mockito.doAnswer((stubInvo) -> {
+				return 10 * 1024;
+			}).when(mockInstance).getMaxZnodeBytes();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableTimeout[0];
+			}).when(mockInstance).getTaskAssignmentTimeout();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableTimeout[0];
+			}).when(mockInstance).getTaskCleanupTimeout();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableTimeout[0];
+			}).when(mockInstance).getTaskShutdownLinkTimeout();
+			Mockito.doAnswer((stubInvo) -> {
+				return 1;
+			}).when(mockInstance).getMaxRetriesBeforeBlacklist();
+			Mockito.doAnswer((stubInvo) -> {
+				return mockFieldVariableTimeout[0];
+			}).when(mockInstance).getWorkerBlackListCleanupPeriod();
+		} catch (Exception exception) {
+		}
+		return mockInstance;
 	}
 }

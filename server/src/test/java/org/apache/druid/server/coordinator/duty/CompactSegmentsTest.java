@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -75,6 +74,7 @@ import org.joda.time.Period;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -84,6 +84,20 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 
 public class CompactSegmentsTest {
+	static private DruidNodeDiscoveryProvider mockDruidNodeDiscoveryProvider1() {
+		DruidNodeDiscoveryProvider mockInstance = Mockito.spy(DruidNodeDiscoveryProvider.class);
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				throw new UnsupportedOperationException();
+			}).when(mockInstance).getForNode(Mockito.any(DruidNode.class), Mockito.any(NodeRole.class));
+			Mockito.doAnswer((stubInvo) -> {
+				return EasyMock.niceMock(DruidNodeDiscovery.class);
+			}).when(mockInstance).getForNodeRole(Mockito.any(NodeRole.class));
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
+
 	private static final String DATA_SOURCE_PREFIX = "dataSource_";
 
 	private Map<String, VersionedIntervalTimeline<String, DataSegment>> dataSources;
@@ -271,7 +285,7 @@ public class CompactSegmentsTest {
 		private int idSuffix = 0;
 
 		private TestDruidLeaderClient(ObjectMapper jsonMapper) {
-			super(null, new TestNodeDiscoveryProvider(), null, null, null);
+			super(null, CompactSegmentsTest.mockDruidNodeDiscoveryProvider1(), null, null, null);
 			this.jsonMapper = jsonMapper;
 		}
 
@@ -365,18 +379,6 @@ public class CompactSegmentsTest {
 			}
 
 			return "task_" + idSuffix++;
-		}
-	}
-
-	private static class TestNodeDiscoveryProvider extends DruidNodeDiscoveryProvider {
-		@Override
-		public BooleanSupplier getForNode(DruidNode node, NodeRole nodeRole) {
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public DruidNodeDiscovery getForNodeRole(NodeRole nodeRole) {
-			return EasyMock.niceMock(DruidNodeDiscovery.class);
 		}
 	}
 }

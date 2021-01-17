@@ -19,17 +19,17 @@
 
 package org.apache.druid.server;
 
-import com.google.common.collect.ImmutableList;
-import com.google.inject.Binder;
-import com.google.inject.Injector;
-import com.google.inject.Key;
-import com.google.inject.name.Names;
-import com.sun.jersey.api.container.grizzly2.GrizzlyServerFactory;
-import com.sun.jersey.api.core.ClassNamesResourceConfig;
-import com.sun.jersey.api.core.ResourceConfig;
-import com.sun.jersey.core.spi.component.ioc.IoCComponentProviderFactory;
-import com.sun.jersey.guice.spi.container.GuiceComponentProviderFactory;
-import com.sun.jersey.spi.inject.SingletonTypeInjectableProvider;
+import java.io.IOException;
+import java.net.URI;
+import java.util.Collections;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.UriBuilder;
+import javax.ws.rs.ext.Provider;
+
 import org.apache.druid.guice.GuiceInjectors;
 import org.apache.druid.guice.annotations.Client;
 import org.apache.druid.initialization.Initialization;
@@ -44,85 +44,64 @@ import org.apache.druid.server.security.AuthorizerMapper;
 import org.easymock.EasyMock;
 import org.glassfish.grizzly.http.server.HttpServer;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.UriBuilder;
-import javax.ws.rs.ext.Provider;
-import java.io.IOException;
-import java.net.URI;
-import java.util.Collections;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.Consumer;
+import com.google.common.collect.ImmutableList;
+import com.google.inject.Binder;
+import com.google.inject.Injector;
+import com.google.inject.Key;
+import com.google.inject.name.Names;
+import com.sun.jersey.api.container.grizzly2.GrizzlyServerFactory;
+import com.sun.jersey.api.core.ClassNamesResourceConfig;
+import com.sun.jersey.api.core.ResourceConfig;
+import com.sun.jersey.core.spi.component.ioc.IoCComponentProviderFactory;
+import com.sun.jersey.guice.spi.container.GuiceComponentProviderFactory;
+import com.sun.jersey.spi.inject.SingletonTypeInjectableProvider;
 
-public class WebserverTestUtils
-{
+public class WebserverTestUtils {
 
-  public static URI createBaseUri()
-  {
-    final int port = ThreadLocalRandom.current().nextInt(1024, 65534);
-    return UriBuilder.fromUri("http://localhost/").port(port).build();
-  }
+	public static URI createBaseUri() {
+		final int port = ThreadLocalRandom.current().nextInt(1024, 65534);
+		return UriBuilder.fromUri("http://localhost/").port(port).build();
+	}
 
-  public static HttpServer createServer(
-      String SERVICE_NAME,
-      URI baseUri,
-      String resourceClassName,
-      Consumer<Binder> extender
-  )
-      throws IOException
-  {
-    Injector injector = Initialization.makeInjectorWithModules(
-        GuiceInjectors.makeStartupInjector(),
-        ImmutableList.of(binder -> {
-          binder.bindConstant().annotatedWith(Names.named("serviceName")).to(SERVICE_NAME);
-          binder.bindConstant().annotatedWith(Names.named("servicePort")).to(baseUri.getPort());
-          binder.bindConstant().annotatedWith(Names.named("tlsServicePort")).to(baseUri.getPort() + 1);
-          binder.bind(Key.get(ServiceEmitter.class)).toInstance(new NoopServiceEmitter());
-          binder.bind(Key.get(AuthConfig.class)).toInstance(new AuthConfig());
-          binder.bind(AuthorizerMapper.class).toInstance(AuthTestUtils.TEST_AUTHORIZER_MAPPER);
-          binder.bind(AuthenticatorMapper.class).toInstance(AuthTestUtils.TEST_AUTHENTICATOR_MAPPER);
-          binder.bind(Key.get(HttpClient.class, Client.class)).toInstance(EasyMock.createMock(HttpClient.class));
-          extender.accept(binder);
-        })
-    );
-    ResourceConfig resourceConfig = new ClassNamesResourceConfig(
-        resourceClassName
-        + ';'
-        + MockHttpServletRequest.class.getName()
-    );
-    IoCComponentProviderFactory ioc = new GuiceComponentProviderFactory(resourceConfig, injector);
-    HttpServer server = GrizzlyServerFactory.createHttpServer(baseUri, resourceConfig, ioc);
-    return server;
-  }
+	public static HttpServer createServer(String SERVICE_NAME, URI baseUri, String resourceClassName,
+			Consumer<Binder> extender) throws IOException {
+		Injector injector = Initialization.makeInjectorWithModules(GuiceInjectors.makeStartupInjector(),
+				ImmutableList.of(binder -> {
+					binder.bindConstant().annotatedWith(Names.named("serviceName")).to(SERVICE_NAME);
+					binder.bindConstant().annotatedWith(Names.named("servicePort")).to(baseUri.getPort());
+					binder.bindConstant().annotatedWith(Names.named("tlsServicePort")).to(baseUri.getPort() + 1);
+					binder.bind(Key.get(ServiceEmitter.class)).toInstance(NoopServiceEmitter.mockServiceEmitter1());
+					binder.bind(Key.get(AuthConfig.class)).toInstance(new AuthConfig());
+					binder.bind(AuthorizerMapper.class).toInstance(AuthTestUtils.TEST_AUTHORIZER_MAPPER);
+					binder.bind(AuthenticatorMapper.class).toInstance(AuthTestUtils.TEST_AUTHENTICATOR_MAPPER);
+					binder.bind(Key.get(HttpClient.class, Client.class))
+							.toInstance(EasyMock.createMock(HttpClient.class));
+					extender.accept(binder);
+				}));
+		ResourceConfig resourceConfig = new ClassNamesResourceConfig(
+				resourceClassName + ';' + MockHttpServletRequest.class.getName());
+		IoCComponentProviderFactory ioc = new GuiceComponentProviderFactory(resourceConfig, injector);
+		HttpServer server = GrizzlyServerFactory.createHttpServer(baseUri, resourceConfig, ioc);
+		return server;
+	}
 
-  @Provider
-  public static class MockHttpServletRequest extends
-      SingletonTypeInjectableProvider<Context, HttpServletRequest>
-  {
-    public MockHttpServletRequest()
-    {
-      super(
-          HttpServletRequest.class,
-          createMockRequest()
-      );
-    }
+	@Provider
+	public static class MockHttpServletRequest extends SingletonTypeInjectableProvider<Context, HttpServletRequest> {
+		public MockHttpServletRequest() {
+			super(HttpServletRequest.class, createMockRequest());
+		}
 
-    static HttpServletRequest createMockRequest()
-    {
-      HttpServletRequest mockRequest = EasyMock.createNiceMock(HttpServletRequest.class);
-      AuthenticationResult authenticationResult = new AuthenticationResult(
-          "druid",
-          "druid",
-          null,
-          Collections.emptyMap()
-      );
+		static HttpServletRequest createMockRequest() {
+			HttpServletRequest mockRequest = EasyMock.createNiceMock(HttpServletRequest.class);
+			AuthenticationResult authenticationResult = new AuthenticationResult("druid", "druid", null,
+					Collections.emptyMap());
 
-      EasyMock.expect(mockRequest.getAttribute(AuthConfig.DRUID_AUTHORIZATION_CHECKED)).andReturn(null).anyTimes();
-      EasyMock.expect(mockRequest.getAttribute(AuthConfig.DRUID_AUTHENTICATION_RESULT))
-              .andReturn(authenticationResult)
-              .anyTimes();
-      EasyMock.replay(mockRequest);
-      return mockRequest;
-    }
-  }
+			EasyMock.expect(mockRequest.getAttribute(AuthConfig.DRUID_AUTHORIZATION_CHECKED)).andReturn(null)
+					.anyTimes();
+			EasyMock.expect(mockRequest.getAttribute(AuthConfig.DRUID_AUTHENTICATION_RESULT))
+					.andReturn(authenticationResult).anyTimes();
+			EasyMock.replay(mockRequest);
+			return mockRequest;
+		}
+	}
 }

@@ -23,16 +23,21 @@ import org.apache.druid.server.security.Escalator;
 import org.apache.druid.sql.calcite.planner.PlannerFactory;
 import org.apache.druid.sql.calcite.view.DruidViewMacro;
 import org.apache.druid.sql.calcite.view.DruidViewMacroFactory;
+import org.mockito.Mockito;
 
-public class TestDruidViewMacroFactory implements DruidViewMacroFactory
-{
-  @Override
-  public DruidViewMacro create(
-      PlannerFactory plannerFactory,
-      Escalator escalator,
-      String viewSql
-  )
-  {
-    return new DruidViewMacro(plannerFactory, escalator, viewSql, CalciteTests.DRUID_SCHEMA_NAME);
-  }
+public class TestDruidViewMacroFactory {
+	static public DruidViewMacroFactory mockDruidViewMacroFactory1() {
+		DruidViewMacroFactory mockInstance = Mockito.spy(DruidViewMacroFactory.class);
+		try {
+			Mockito.doAnswer((stubInvo) -> {
+				PlannerFactory plannerFactory = stubInvo.getArgument(0);
+				Escalator escalator = stubInvo.getArgument(1);
+				String viewSql = stubInvo.getArgument(2);
+				return new DruidViewMacro(plannerFactory, escalator, viewSql, CalciteTests.DRUID_SCHEMA_NAME);
+			}).when(mockInstance).create(Mockito.any(PlannerFactory.class), Mockito.any(Escalator.class),
+					Mockito.any(String.class));
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 }

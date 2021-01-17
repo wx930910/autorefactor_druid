@@ -19,7 +19,6 @@
 
 package org.apache.druid.indexing.common.task;
 
-import com.google.common.collect.ImmutableMap;
 import org.apache.druid.data.input.impl.DimensionsSpec;
 import org.apache.druid.data.input.impl.NoopFirehoseFactory;
 import org.apache.druid.data.input.impl.NoopInputFormat;
@@ -35,108 +34,54 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
-public class IndexIngestionSpecTest
-{
-  @Rule
-  public ExpectedException expectedException = ExpectedException.none();
+import com.google.common.collect.ImmutableMap;
 
-  @Test
-  public void testParserAndInputFormat()
-  {
-    expectedException.expect(IllegalArgumentException.class);
-    expectedException.expectMessage(
-        "Cannot use parser and inputSource together. Try using inputFormat instead of parser."
-    );
-    final IndexIngestionSpec spec = new IndexIngestionSpec(
-        new DataSchema(
-            "dataSource",
-            ImmutableMap.of("fake", "parser map"),
-            new AggregatorFactory[0],
-            new ArbitraryGranularitySpec(Granularities.NONE, null),
-            null,
-            null
-        ),
-        new IndexIOConfig(
-            null,
-            new NoopInputSource(),
-            new NoopInputFormat(),
-            null
-        ),
-        null
-    );
-  }
+public class IndexIngestionSpecTest {
+	@Rule
+	public ExpectedException expectedException = ExpectedException.none();
 
-  @Test
-  public void testParserAndInputSource()
-  {
-    expectedException.expect(IllegalArgumentException.class);
-    expectedException.expectMessage("Cannot use parser and inputSource together.");
-    final IndexIngestionSpec spec = new IndexIngestionSpec(
-        new DataSchema(
-            "dataSource",
-            ImmutableMap.of("fake", "parser map"),
-            new AggregatorFactory[0],
-            new ArbitraryGranularitySpec(Granularities.NONE, null),
-            null,
-            null
-        ),
-        new IndexIOConfig(
-            null,
-            new NoopInputSource(),
-            null,
-            null
-        ),
-        null
-    );
-  }
+	@Test
+	public void testParserAndInputFormat() {
+		expectedException.expect(IllegalArgumentException.class);
+		expectedException
+				.expectMessage("Cannot use parser and inputSource together. Try using inputFormat instead of parser.");
+		final IndexIngestionSpec spec = new IndexIngestionSpec(
+				new DataSchema("dataSource", ImmutableMap.of("fake", "parser map"), new AggregatorFactory[0],
+						new ArbitraryGranularitySpec(Granularities.NONE, null), null, null),
+				new IndexIOConfig(null, NoopInputSource.mockInputSource1(), new NoopInputFormat(), null), null);
+	}
 
-  @Test
-  public void testFirehoseAndInputSource()
-  {
-    expectedException.expect(IllegalArgumentException.class);
-    expectedException.expectMessage(
-        "At most one of [Property{name='firehose', value=NoopFirehoseFactory{}}, Property{name='inputSource'"
-    );
-    final IndexIngestionSpec spec = new IndexIngestionSpec(
-        new DataSchema(
-            "dataSource",
-            new TimestampSpec(null, null, null),
-            DimensionsSpec.EMPTY,
-            new AggregatorFactory[0],
-            new ArbitraryGranularitySpec(Granularities.NONE, null),
-            null
-        ),
-        new IndexIOConfig(
-            new NoopFirehoseFactory(),
-            new NoopInputSource(),
-            null,
-            null
-        ),
-        null
-    );
-  }
+	@Test
+	public void testParserAndInputSource() {
+		expectedException.expect(IllegalArgumentException.class);
+		expectedException.expectMessage("Cannot use parser and inputSource together.");
+		final IndexIngestionSpec spec = new IndexIngestionSpec(
+				new DataSchema("dataSource", ImmutableMap.of("fake", "parser map"), new AggregatorFactory[0],
+						new ArbitraryGranularitySpec(Granularities.NONE, null), null, null),
+				new IndexIOConfig(null, NoopInputSource.mockInputSource1(), null, null), null);
+	}
 
-  @Test
-  public void testFirehoseAndInputFormat()
-  {
-    expectedException.expect(IllegalArgumentException.class);
-    expectedException.expectMessage("Cannot use firehose and inputFormat together.");
-    final IndexIngestionSpec spec = new IndexIngestionSpec(
-        new DataSchema(
-            "dataSource",
-            new TimestampSpec(null, null, null),
-            DimensionsSpec.EMPTY,
-            new AggregatorFactory[0],
-            new ArbitraryGranularitySpec(Granularities.NONE, null),
-            null
-        ),
-        new IndexIOConfig(
-            new NoopFirehoseFactory(),
-            null,
-            new NoopInputFormat(),
-            null
-        ),
-        null
-    );
-  }
+	@Test
+	public void testFirehoseAndInputSource() {
+		expectedException.expect(IllegalArgumentException.class);
+		expectedException.expectMessage(
+				"At most one of [Property{name='firehose', value=NoopFirehoseFactory{}}, Property{name='inputSource'");
+		final IndexIngestionSpec spec = new IndexIngestionSpec(
+				new DataSchema("dataSource", new TimestampSpec(null, null, null), DimensionsSpec.EMPTY,
+						new AggregatorFactory[0], new ArbitraryGranularitySpec(Granularities.NONE, null), null),
+				new IndexIOConfig(NoopFirehoseFactory.mockFiniteFirehoseFactory1(), NoopInputSource.mockInputSource1(),
+						null, null),
+				null);
+	}
+
+	@Test
+	public void testFirehoseAndInputFormat() {
+		expectedException.expect(IllegalArgumentException.class);
+		expectedException.expectMessage("Cannot use firehose and inputFormat together.");
+		final IndexIngestionSpec spec = new IndexIngestionSpec(
+				new DataSchema("dataSource", new TimestampSpec(null, null, null), DimensionsSpec.EMPTY,
+						new AggregatorFactory[0], new ArbitraryGranularitySpec(Granularities.NONE, null), null),
+				new IndexIOConfig(NoopFirehoseFactory.mockFiniteFirehoseFactory1(), null, new NoopInputFormat(), null),
+				null);
+	}
 }

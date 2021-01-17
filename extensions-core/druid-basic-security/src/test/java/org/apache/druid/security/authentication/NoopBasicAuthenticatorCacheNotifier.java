@@ -20,12 +20,14 @@
 package org.apache.druid.security.authentication;
 
 import org.apache.druid.security.basic.authentication.db.cache.BasicAuthenticatorCacheNotifier;
+import org.mockito.Mockito;
 
-public class NoopBasicAuthenticatorCacheNotifier implements BasicAuthenticatorCacheNotifier
-{
-  @Override
-  public void addUserUpdate(String updatedAuthenticatorPrefix, byte[] updatedUserMap)
-  {
-    // Do nothing as this is a noop implementation
-  }
+public class NoopBasicAuthenticatorCacheNotifier {
+	static public BasicAuthenticatorCacheNotifier mockBasicAuthenticatorCacheNotifier1() {
+		BasicAuthenticatorCacheNotifier mockInstance = Mockito.spy(BasicAuthenticatorCacheNotifier.class);
+		try {
+		} catch (Exception exception) {
+		}
+		return mockInstance;
+	}
 }
