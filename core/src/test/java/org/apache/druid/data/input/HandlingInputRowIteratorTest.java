@@ -76,26 +76,14 @@ public class HandlingInputRowIteratorTest {
 	public static class PresentRowTest {
 		boolean unsuccessfulHandlerSuccessful;
 
-		boolean successfulHandlerSuccessful;
-
 		private static final InputRow INPUT_ROW1 = EasyMock.mock(InputRow.class);
 		private static final InputRow INPUT_ROW2 = EasyMock.mock(InputRow.class);
 		private static final List<InputRow> INPUT_ROWS = Arrays.asList(INPUT_ROW1, INPUT_ROW2);
 
-		private InputRowHandler successfulHandler;
 		private InputRowHandler unsuccessfulHandler;
 
 		@Before
 		public void setup() {
-			successfulHandler = Mockito.mock(HandlingInputRowIterator.InputRowHandler.class);
-			successfulHandlerSuccessful = true;
-			try {
-				Mockito.when(successfulHandler.handle(Mockito.any())).thenAnswer((stubInvo) -> {
-					return successfulHandlerSuccessful;
-				});
-			} catch (Exception exception) {
-				exception.printStackTrace();
-			}
 			unsuccessfulHandler = Mockito.mock(HandlingInputRowIterator.InputRowHandler.class);
 			unsuccessfulHandlerSuccessful = false;
 			try {
@@ -112,29 +100,6 @@ public class HandlingInputRowIteratorTest {
 			HandlingInputRowIterator target = createInputRowIterator(unsuccessfulHandler, unsuccessfulHandler);
 			Assert.assertTrue(target.hasNext());
 			Mockito.verify(unsuccessfulHandler, Mockito.never()).handle(Mockito.any());
-		}
-
-		@Test
-		public void yieldsNextIfUnhandled() {
-			HandlingInputRowIterator target = createInputRowIterator(unsuccessfulHandler, unsuccessfulHandler);
-			Assert.assertEquals(INPUT_ROW1, target.next());
-			Mockito.verify(unsuccessfulHandler, Mockito.atLeastOnce()).handle(Mockito.any());
-		}
-
-		@Test
-		public void yieldsNullIfHandledByFirst() {
-			HandlingInputRowIterator target = createInputRowIterator(successfulHandler, unsuccessfulHandler);
-			Assert.assertNull(target.next());
-			Mockito.verify(successfulHandler, Mockito.atLeastOnce()).handle(Mockito.any());
-			Mockito.verify(unsuccessfulHandler, Mockito.never()).handle(Mockito.any());
-		}
-
-		@Test
-		public void yieldsNullIfHandledBySecond() {
-			HandlingInputRowIterator target = createInputRowIterator(unsuccessfulHandler, successfulHandler);
-			Assert.assertNull(target.next());
-			Mockito.verify(unsuccessfulHandler, Mockito.atLeastOnce()).handle(Mockito.any());
-			Mockito.verify(successfulHandler, Mockito.atLeastOnce()).handle(Mockito.any());
 		}
 
 		private static HandlingInputRowIterator createInputRowIterator(
