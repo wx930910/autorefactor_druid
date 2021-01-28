@@ -19,48 +19,34 @@
 
 package org.apache.druid.java.util.metrics;
 
-import com.google.common.collect.ImmutableMap;
+import java.util.List;
+
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.emitter.core.Event;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.List;
+import com.google.common.collect.ImmutableMap;
 
-public class MonitorsTest
-{
+public class MonitorsTest {
 
-  @Test
-  public void testSetFeed()
-  {
-    String feed = "testFeed";
-    StubServiceEmitter emitter = new StubServiceEmitter("dev/monitor-test", "localhost:0000");
-    Monitor m = Monitors.createCompoundJvmMonitor(ImmutableMap.of(), feed);
-    m.start();
-    m.monitor(emitter);
-    m.stop();
-    checkEvents(emitter.getEvents(), feed);
-  }
+	@Test
+	public void testDefaultFeed() {
+		StubServiceEmitter emitter = new StubServiceEmitter("dev/monitor-test", "localhost:0000");
+		Monitor m = Monitors.createCompoundJvmMonitor(ImmutableMap.of());
+		m.start();
+		m.monitor(emitter);
+		m.stop();
+		checkEvents(emitter.getEvents(), "metrics");
+	}
 
-  @Test
-  public void testDefaultFeed()
-  {
-    StubServiceEmitter emitter = new StubServiceEmitter("dev/monitor-test", "localhost:0000");
-    Monitor m = Monitors.createCompoundJvmMonitor(ImmutableMap.of());
-    m.start();
-    m.monitor(emitter);
-    m.stop();
-    checkEvents(emitter.getEvents(), "metrics");
-  }
-
-  private void checkEvents(List<Event> events, String expectedFeed)
-  {
-    Assert.assertFalse("no events emitted", events.isEmpty());
-    for (Event e : events) {
-      if (!expectedFeed.equals(e.getFeed())) {
-        String message = StringUtils.format("\"feed\" in event: %s", e.toMap().toString());
-        Assert.assertEquals(message, expectedFeed, e.getFeed());
-      }
-    }
-  }
+	private void checkEvents(List<Event> events, String expectedFeed) {
+		Assert.assertFalse("no events emitted", events.isEmpty());
+		for (Event e : events) {
+			if (!expectedFeed.equals(e.getFeed())) {
+				String message = StringUtils.format("\"feed\" in event: %s", e.toMap().toString());
+				Assert.assertEquals(message, expectedFeed, e.getFeed());
+			}
+		}
+	}
 }
