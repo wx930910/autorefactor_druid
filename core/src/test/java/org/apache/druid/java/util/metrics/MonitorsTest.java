@@ -34,30 +34,6 @@ import com.google.common.collect.ImmutableMap;
 public class MonitorsTest {
 
 	@Test
-	public void testSetFeed() {
-		String feed = "testFeed";
-		ServiceEmitter emitter = Mockito.spy(new ServiceEmitter("dev/monitor-test", "localhost:0000", null));
-		List<Event> emitterEvents = new ArrayList<>();
-		try {
-			Mockito.doAnswer((stubInvo) -> {
-				Event event = stubInvo.getArgument(0);
-				emitterEvents.add(event);
-				return null;
-			}).when(emitter).emit(Mockito.any(Event.class));
-			Mockito.doNothing().when(emitter).start();
-			Mockito.doNothing().when(emitter).close();
-			Mockito.doNothing().when(emitter).flush();
-		} catch (Exception exception) {
-			exception.printStackTrace();
-		}
-		Monitor m = Monitors.createCompoundJvmMonitor(ImmutableMap.of(), feed);
-		m.start();
-		m.monitor(emitter);
-		m.stop();
-		checkEvents(emitterEvents, feed);
-	}
-
-	@Test
 	public void testDefaultFeed() {
 		ServiceEmitter emitter = Mockito.spy(new ServiceEmitter("dev/monitor-test", "localhost:0000", null));
 		List<Event> emitterEvents = new ArrayList<>();
