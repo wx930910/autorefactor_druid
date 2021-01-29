@@ -19,13 +19,8 @@
 
 package org.apache.druid.java.util.metrics;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
+import com.google.common.collect.ImmutableMap;
 import org.apache.druid.java.util.emitter.core.Event;
-import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.metrics.cgroups.CgroupDiscoverer;
 import org.apache.druid.java.util.metrics.cgroups.ProcCgroupDiscoverer;
 import org.apache.druid.java.util.metrics.cgroups.TestUtils;
@@ -35,50 +30,44 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
-import org.mockito.Mockito;
 
-import com.google.common.collect.ImmutableMap;
+import java.io.File;
+import java.io.IOException;
+import java.util.List;
 
-public class CgroupMemoryMonitorTest {
-	@Rule
-	public ExpectedException expectedException = ExpectedException.none();
-	@Rule
-	public TemporaryFolder temporaryFolder = new TemporaryFolder();
-	private File procDir;
-	private File cgroupDir;
-	private CgroupDiscoverer discoverer;
+public class CgroupMemoryMonitorTest
+{
+  @Rule
+  public ExpectedException expectedException = ExpectedException.none();
+  @Rule
+  public TemporaryFolder temporaryFolder = new TemporaryFolder();
+  private File procDir;
+  private File cgroupDir;
+  private CgroupDiscoverer discoverer;
 
-	@Before
-	public void setUp() throws IOException {
-		cgroupDir = temporaryFolder.newFolder();
-		procDir = temporaryFolder.newFolder();
-		discoverer = new ProcCgroupDiscoverer(procDir.toPath());
-		TestUtils.setUpCgroups(procDir, cgroupDir);
-		final File memoryDir = new File(cgroupDir, "memory/system.slice/some.service");
-		Assert.assertTrue((memoryDir.isDirectory() && memoryDir.exists()) || memoryDir.mkdirs());
-		TestUtils.copyResource("/memory.stat", new File(memoryDir, "memory.stat"));
-		TestUtils.copyResource("/memory.numa_stat", new File(memoryDir, "memory.numa_stat"));
-	}
+  @Before
+  public void setUp() throws IOException
+  {
+    cgroupDir = temporaryFolder.newFolder();
+    procDir = temporaryFolder.newFolder();
+    discoverer = new ProcCgroupDiscoverer(procDir.toPath());
+    TestUtils.setUpCgroups(procDir, cgroupDir);
+    final File memoryDir = new File(
+        cgroupDir,
+        "memory/system.slice/some.service"
+    );
+    Assert.assertTrue((memoryDir.isDirectory() && memoryDir.exists()) || memoryDir.mkdirs());
+    TestUtils.copyResource("/memory.stat", new File(memoryDir, "memory.stat"));
+    TestUtils.copyResource("/memory.numa_stat", new File(memoryDir, "memory.numa_stat"));
+  }
 
-	@Test
-	public void testMonitor() {
-		final CgroupMemoryMonitor monitor = new CgroupMemoryMonitor(discoverer, ImmutableMap.of(), "some_feed");
-		final ServiceEmitter emitter = Mockito.spy(new ServiceEmitter("service", "host", null));
-		List<Event> emitterEvents = new ArrayList<>();
-		try {
-			Mockito.doAnswer((stubInvo) -> {
-				Event event = stubInvo.getArgument(0);
-				emitterEvents.add(event);
-				return null;
-			}).when(emitter).emit(Mockito.any(Event.class));
-			Mockito.doNothing().when(emitter).close();
-			Mockito.doNothing().when(emitter).start();
-			Mockito.doNothing().when(emitter).flush();
-		} catch (Exception exception) {
-			exception.printStackTrace();
-		}
-		Assert.assertTrue(monitor.doMonitor(emitter));
-		final List<Event> actualEvents = emitterEvents;
-		Assert.assertEquals(44, actualEvents.size());
-	}
+  @Test
+  public void testMonitor()
+  {
+    final CgroupMemoryMonitor monitor = new CgroupMemoryMonitor(discoverer, ImmutableMap.of(), "some_feed");
+    final StubServiceEmitter emitter = new StubServiceEmitter("service", "host");
+    Assert.assertTrue(monitor.doMonitor(emitter));
+    final List<Event> actualEvents = emitter.getEvents();
+    Assert.assertEquals(44, actualEvents.size());
+  }
 }
