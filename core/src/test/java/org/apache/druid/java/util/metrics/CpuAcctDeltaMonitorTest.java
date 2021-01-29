@@ -21,13 +21,18 @@ package org.apache.druid.java.util.metrics;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
+import org.apache.druid.java.util.emitter.core.Event;
+import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.metrics.cgroups.TestUtils;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.mockito.Mockito;
 
 import com.google.common.collect.ImmutableMap;
 
@@ -53,11 +58,24 @@ public class CpuAcctDeltaMonitorTest {
 		final CpuAcctDeltaMonitor monitor = new CpuAcctDeltaMonitor("some_feed", ImmutableMap.of(), cgroup -> {
 			throw new RuntimeException("Should continue");
 		});
-		final StubServiceEmitter emitter = new StubServiceEmitter("service", "host");
+		final ServiceEmitter emitter = Mockito.spy(new ServiceEmitter("service", "host", null));
+		List<Event> emitterEvents = new ArrayList<>();
+		try {
+			Mockito.doNothing().when(emitter).start();
+			Mockito.doAnswer((stubInvo) -> {
+				Event event = stubInvo.getArgument(0);
+				emitterEvents.add(event);
+				return null;
+			}).when(emitter).emit(Mockito.any(Event.class));
+			Mockito.doNothing().when(emitter).flush();
+			Mockito.doNothing().when(emitter).close();
+		} catch (Exception exception) {
+			exception.printStackTrace();
+		}
 		monitor.doMonitor(emitter);
 		monitor.doMonitor(emitter);
 		monitor.doMonitor(emitter);
-		Assert.assertTrue(emitter.getEvents().isEmpty());
+		Assert.assertTrue(emitterEvents.isEmpty());
 	}
 
 }
