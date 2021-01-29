@@ -54,7 +54,6 @@ import org.junit.Test;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
@@ -63,15 +62,13 @@ import com.google.common.collect.ImmutableMap;
  */
 public class BatchDataSegmentAnnouncerTest {
 	private static final String TEST_BASE_PATH = "/test";
-	private static final String TEST_SEGMENTS_PATH = "/test/segments/id";
-	private static final Joiner JOINER = Joiner.on("/");
+
 	private static final int NUM_THREADS = 4;
 
 	private TestingCluster testingCluster;
 	private CuratorFramework cf;
 	private ObjectMapper jsonMapper;
 	private TestAnnouncer announcer;
-	private SegmentReader segmentReader;
 	private BatchDataSegmentAnnouncer segmentAnnouncer;
 	private Set<DataSegment> testSegments;
 
@@ -98,7 +95,6 @@ public class BatchDataSegmentAnnouncerTest {
 		announcer = new TestAnnouncer(cf, Execs.directExecutor());
 		announcer.start();
 
-		segmentReader = new SegmentReader(cf, jsonMapper);
 		skipDimensionsAndMetrics = false;
 		skipLoadSpec = false;
 		segmentAnnouncer = new BatchDataSegmentAnnouncer(
