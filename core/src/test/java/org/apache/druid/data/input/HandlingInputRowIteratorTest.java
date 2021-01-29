@@ -25,6 +25,7 @@ import java.util.List;
 
 import javax.annotation.Nullable;
 
+import org.apache.druid.data.input.HandlingInputRowIterator.InputRowHandler;
 import org.apache.druid.java.util.common.CloseableIterators;
 import org.apache.druid.java.util.common.parsers.CloseableIterator;
 import org.easymock.EasyMock;
@@ -33,27 +34,38 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.runner.RunWith;
+import org.mockito.Mockito;
 
 @RunWith(Enclosed.class)
 public class HandlingInputRowIteratorTest {
 
 	public static class PresentRowTest {
+		boolean unsuccessfulHandlerSuccessful;
+
 		private static final InputRow INPUT_ROW1 = EasyMock.mock(InputRow.class);
 		private static final InputRow INPUT_ROW2 = EasyMock.mock(InputRow.class);
 		private static final List<InputRow> INPUT_ROWS = Arrays.asList(INPUT_ROW1, INPUT_ROW2);
 
-		private TestInputRowHandler unsuccessfulHandler;
+		private InputRowHandler unsuccessfulHandler;
 
 		@Before
 		public void setup() {
-			unsuccessfulHandler = new TestInputRowHandler(false);
+			unsuccessfulHandler = Mockito.mock(HandlingInputRowIterator.InputRowHandler.class);
+			unsuccessfulHandlerSuccessful = false;
+			try {
+				Mockito.when(unsuccessfulHandler.handle(Mockito.any())).thenAnswer((stubInvo) -> {
+					return unsuccessfulHandlerSuccessful;
+				});
+			} catch (Exception exception) {
+				exception.printStackTrace();
+			}
 		}
 
 		@Test
 		public void hasNext() {
 			HandlingInputRowIterator target = createInputRowIterator(unsuccessfulHandler, unsuccessfulHandler);
 			Assert.assertTrue(target.hasNext());
-			Assert.assertFalse(unsuccessfulHandler.invoked);
+			Mockito.verify(unsuccessfulHandler, Mockito.never()).handle(Mockito.any());
 		}
 
 		private static HandlingInputRowIterator createInputRowIterator(
@@ -75,22 +87,6 @@ public class HandlingInputRowIteratorTest {
 			});
 
 			return new HandlingInputRowIterator(iterator, Arrays.asList(firstHandler, secondHandler));
-		}
-
-		private static class TestInputRowHandler implements HandlingInputRowIterator.InputRowHandler {
-			boolean invoked = false;
-
-			private final boolean successful;
-
-			TestInputRowHandler(boolean successful) {
-				this.successful = successful;
-			}
-
-			@Override
-			public boolean handle(InputRow inputRow) {
-				invoked = true;
-				return successful;
-			}
 		}
 	}
 }
