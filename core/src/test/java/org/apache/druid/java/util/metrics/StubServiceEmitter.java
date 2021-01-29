@@ -19,44 +19,37 @@
 
 package org.apache.druid.java.util.metrics;
 
-import org.apache.druid.java.util.emitter.core.Event;
-import org.apache.druid.java.util.emitter.service.ServiceEmitter;
-
 import java.util.ArrayList;
 import java.util.List;
 
-public class StubServiceEmitter extends ServiceEmitter
-{
-  private List<Event> events = new ArrayList<>();
+import org.apache.druid.java.util.emitter.core.Event;
+import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 
-  public StubServiceEmitter(String service, String host)
-  {
-    super(service, host, null);
-  }
+public class StubServiceEmitter extends ServiceEmitter {
+	private List<Event> events = new ArrayList<>();
 
-  @Override
-  public void emit(Event event)
-  {
-    events.add(event);
-  }
+	public StubServiceEmitter(String service, String host) {
+		super(service, host, null);
+	}
 
-  public List<Event> getEvents()
-  {
-    return events;
-  }
+	@Override
+	public void emit(Event event) {
+		events.add(event);
+	}
 
-  @Override
-  public void start()
-  {
-  }
+	public List<Event> getEvents() {
+		return events;
+	}
 
-  @Override
-  public void flush()
-  {
-  }
+	@Override
+	public void start() {
+	}
 
-  @Override
-  public void close()
-  {
-  }
+	@Override
+	public void flush() {
+	}
+
+	@Override
+	public void close() {
+	}
 }
