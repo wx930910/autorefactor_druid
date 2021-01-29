@@ -19,12 +19,15 @@
 
 package org.apache.druid.java.util.metrics;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.emitter.core.Event;
+import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.junit.Assert;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import com.google.common.collect.ImmutableMap;
 
@@ -32,12 +35,25 @@ public class MonitorsTest {
 
 	@Test
 	public void testDefaultFeed() {
-		StubServiceEmitter emitter = new StubServiceEmitter("dev/monitor-test", "localhost:0000");
+		ServiceEmitter emitter = Mockito.spy(new ServiceEmitter("dev/monitor-test", "localhost:0000", null));
+		List<Event> emitterEvents = new ArrayList<>();
+		try {
+			Mockito.doNothing().when(emitter).start();
+			Mockito.doAnswer((stubInvo) -> {
+				Event event = stubInvo.getArgument(0);
+				emitterEvents.add(event);
+				return null;
+			}).when(emitter).emit(Mockito.any(Event.class));
+			Mockito.doNothing().when(emitter).flush();
+			Mockito.doNothing().when(emitter).close();
+		} catch (Exception exception) {
+			exception.printStackTrace();
+		}
 		Monitor m = Monitors.createCompoundJvmMonitor(ImmutableMap.of());
 		m.start();
 		m.monitor(emitter);
 		m.stop();
-		checkEvents(emitter.getEvents(), "metrics");
+		checkEvents(emitterEvents, "metrics");
 	}
 
 	private void checkEvents(List<Event> events, String expectedFeed) {
