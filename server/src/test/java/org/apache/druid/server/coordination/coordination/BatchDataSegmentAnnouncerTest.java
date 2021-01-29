@@ -52,7 +52,6 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -176,29 +175,6 @@ public class BatchDataSegmentAnnouncerTest {
 						DateTimes.of("2013-01-02").plusDays(offset)))
 				.version(DateTimes.nowUtc().toString()).dimensions(ImmutableList.of("dim1", "dim2"))
 				.metrics(ImmutableList.of("met1", "met2")).loadSpec(ImmutableMap.of("type", "local")).size(0).build();
-	}
-
-	private static class SegmentReader {
-		private final CuratorFramework cf;
-		private final ObjectMapper jsonMapper;
-
-		public SegmentReader(CuratorFramework cf, ObjectMapper jsonMapper) {
-			this.cf = cf;
-			this.jsonMapper = jsonMapper;
-		}
-
-		public Set<DataSegment> read(String path) {
-			try {
-				if (cf.checkExists().forPath(path) != null) {
-					return jsonMapper.readValue(cf.getData().forPath(path), new TypeReference<Set<DataSegment>>() {
-					});
-				}
-			} catch (Exception e) {
-				throw new RuntimeException(e);
-			}
-
-			return new HashSet<>();
-		}
 	}
 
 	private static class TestAnnouncer extends Announcer {
