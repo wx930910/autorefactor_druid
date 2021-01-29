@@ -19,12 +19,16 @@
 
 package org.apache.druid.server.metrics;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
-import org.apache.druid.java.util.metrics.StubServiceEmitter;
+import org.apache.druid.java.util.emitter.core.Event;
+import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 import com.google.common.collect.ImmutableMap;
 
@@ -64,18 +68,31 @@ public class TaskCountStatsMonitorTest {
 	@Test
 	public void testMonitor() {
 		final TaskCountStatsMonitor monitor = new TaskCountStatsMonitor(statsProvider);
-		final StubServiceEmitter emitter = new StubServiceEmitter("service", "host");
+		final ServiceEmitter emitter = Mockito.spy(new ServiceEmitter("service", "host", null));
+		List<Event> emitterEvents = new ArrayList<>();
+		try {
+			Mockito.doNothing().when(emitter).flush();
+			Mockito.doNothing().when(emitter).close();
+			Mockito.doAnswer((stubInvo) -> {
+				Event event = stubInvo.getArgument(0);
+				emitterEvents.add(event);
+				return null;
+			}).when(emitter).emit(Mockito.any(Event.class));
+			Mockito.doNothing().when(emitter).start();
+		} catch (Exception exception) {
+			exception.printStackTrace();
+		}
 		monitor.doMonitor(emitter);
-		Assert.assertEquals(5, emitter.getEvents().size());
-		Assert.assertEquals("task/success/count", emitter.getEvents().get(0).toMap().get("metric"));
-		Assert.assertEquals(1L, emitter.getEvents().get(0).toMap().get("value"));
-		Assert.assertEquals("task/failed/count", emitter.getEvents().get(1).toMap().get("metric"));
-		Assert.assertEquals(1L, emitter.getEvents().get(1).toMap().get("value"));
-		Assert.assertEquals("task/running/count", emitter.getEvents().get(2).toMap().get("metric"));
-		Assert.assertEquals(1L, emitter.getEvents().get(2).toMap().get("value"));
-		Assert.assertEquals("task/pending/count", emitter.getEvents().get(3).toMap().get("metric"));
-		Assert.assertEquals(1L, emitter.getEvents().get(3).toMap().get("value"));
-		Assert.assertEquals("task/waiting/count", emitter.getEvents().get(4).toMap().get("metric"));
-		Assert.assertEquals(1L, emitter.getEvents().get(4).toMap().get("value"));
+		Assert.assertEquals(5, emitterEvents.size());
+		Assert.assertEquals("task/success/count", emitterEvents.get(0).toMap().get("metric"));
+		Assert.assertEquals(1L, emitterEvents.get(0).toMap().get("value"));
+		Assert.assertEquals("task/failed/count", emitterEvents.get(1).toMap().get("metric"));
+		Assert.assertEquals(1L, emitterEvents.get(1).toMap().get("value"));
+		Assert.assertEquals("task/running/count", emitterEvents.get(2).toMap().get("metric"));
+		Assert.assertEquals(1L, emitterEvents.get(2).toMap().get("value"));
+		Assert.assertEquals("task/pending/count", emitterEvents.get(3).toMap().get("metric"));
+		Assert.assertEquals(1L, emitterEvents.get(3).toMap().get("value"));
+		Assert.assertEquals("task/waiting/count", emitterEvents.get(4).toMap().get("metric"));
+		Assert.assertEquals(1L, emitterEvents.get(4).toMap().get("value"));
 	}
 }
