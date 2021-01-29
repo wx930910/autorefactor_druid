@@ -21,11 +21,9 @@ package org.apache.druid.java.util.metrics;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.druid.java.util.emitter.core.Event;
-import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 import org.apache.druid.java.util.metrics.cgroups.CgroupDiscoverer;
 import org.apache.druid.java.util.metrics.cgroups.ProcCgroupDiscoverer;
 import org.apache.druid.java.util.metrics.cgroups.TestUtils;
@@ -35,7 +33,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
-import org.mockito.Mockito;
 
 import com.google.common.collect.ImmutableMap;
 
@@ -63,22 +60,9 @@ public class CgroupMemoryMonitorTest {
 	@Test
 	public void testMonitor() {
 		final CgroupMemoryMonitor monitor = new CgroupMemoryMonitor(discoverer, ImmutableMap.of(), "some_feed");
-		final ServiceEmitter emitter = Mockito.spy(new ServiceEmitter("service", "host", null));
-		List<Event> emitterEvents = new ArrayList<>();
-		try {
-			Mockito.doNothing().when(emitter).flush();
-			Mockito.doNothing().when(emitter).close();
-			Mockito.doAnswer((stubInvo) -> {
-				Event event = stubInvo.getArgument(0);
-				emitterEvents.add(event);
-				return null;
-			}).when(emitter).emit(Mockito.any(Event.class));
-			Mockito.doNothing().when(emitter).start();
-		} catch (Exception exception) {
-			exception.printStackTrace();
-		}
+		final StubServiceEmitter emitter = new StubServiceEmitter("service", "host");
 		Assert.assertTrue(monitor.doMonitor(emitter));
-		final List<Event> actualEvents = emitterEvents;
+		final List<Event> actualEvents = emitter.getEvents();
 		Assert.assertEquals(44, actualEvents.size());
 	}
 }

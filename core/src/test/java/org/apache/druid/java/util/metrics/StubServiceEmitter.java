@@ -19,34 +19,37 @@
 
 package org.apache.druid.java.util.metrics;
 
+import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.emitter.core.Event;
-import org.junit.Assert;
-import org.junit.Test;
+import org.apache.druid.java.util.emitter.service.ServiceEmitter;
 
-import com.google.common.collect.ImmutableMap;
+public class StubServiceEmitter extends ServiceEmitter {
+	private List<Event> events = new ArrayList<>();
 
-public class MonitorsTest {
-
-	@Test
-	public void testDefaultFeed() {
-		StubServiceEmitter emitter = new StubServiceEmitter("dev/monitor-test", "localhost:0000");
-		Monitor m = Monitors.createCompoundJvmMonitor(ImmutableMap.of());
-		m.start();
-		m.monitor(emitter);
-		m.stop();
-		checkEvents(emitter.getEvents(), "metrics");
+	public StubServiceEmitter(String service, String host) {
+		super(service, host, null);
 	}
 
-	private void checkEvents(List<Event> events, String expectedFeed) {
-		Assert.assertFalse("no events emitted", events.isEmpty());
-		for (Event e : events) {
-			if (!expectedFeed.equals(e.getFeed())) {
-				String message = StringUtils.format("\"feed\" in event: %s", e.toMap().toString());
-				Assert.assertEquals(message, expectedFeed, e.getFeed());
-			}
-		}
+	@Override
+	public void emit(Event event) {
+		events.add(event);
+	}
+
+	public List<Event> getEvents() {
+		return events;
+	}
+
+	@Override
+	public void start() {
+	}
+
+	@Override
+	public void flush() {
+	}
+
+	@Override
+	public void close() {
 	}
 }
